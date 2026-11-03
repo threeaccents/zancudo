@@ -1,0 +1,119 @@
+const std = @import("std");
+
+// Although this function looks imperative, it does not perform the build
+// directly and instead it mutates the build graph (`b`) that will be then
+// executed by an external runner. The functions in `std.Build` implement a DSL
+// for defining build steps and express dependencies between them, allowing the
+// build runner to parallelize the build automatically (and the cache system to
+// know when a step doesn't need to be re-run).
+pub fn build(b: *std.Build) void {
+    // The broker talks to the Linux kernel directly (std.os.linux syscalls,
+    // epoll), so the default target is Linux on the host's CPU architecture
+    // rather than native. The musl ABI keeps the binary statically linked, so
+    // it runs on any distribution. Pass `-Dtarget=...` to override.
+    const target = b.standardTargetOptions(.{
+        .default_target = .{ .os_tag = .linux, .abi = .musl },
+    });
+    // Standard optimization options allow the person running `zig build` to select
+    // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall. Here we do not
+    // set a preferred release mode, allowing the user to decide how to optimize.
+    const optimize = b.standardOptimizeOption(.{});
+
+    // macOS can't run Linux binaries, so on a Mac the run and test steps
+    // execute inside an OrbStack machine instead. OrbStack mounts /Users at the
+    // same path inside its machines, so the built binaries are visible there
+    // without copying, and ports the broker listens on inside the machine are
+    // reachable from macOS at 127.0.0.1. Create the default machine once with:
+    //   orb create rocky:9 rocky
+    const orb_machine = b.option(
+        []const u8,
+        "orb-machine",
+        "OrbStack machine that runs Linux binaries on macOS (default: rocky)",
+    ) orelse "rocky";
+    const use_orb = target.result.os.tag == .linux and b.graph.host.result.os.tag == .macos;
+
+    // Here we define an executable. An executable needs to have a root module
+    // which needs to expose a `main` function.
+    const exe = b.addExecutable(.{
+        .name = "zancudo",
+        .root_module = b.createModule(.{
+            // b.createModule defines a new module just like b.addModule but,
+            // unlike b.addModule, it does not expose the module to consumers of
+            // this package, which is why in this case we don't have to give it a name.
+            .root_source_file = b.path("src/main.zig"),
+            // Target and optimization levels must be explicitly wired in when
+            // defining an executable or library (in the root module), and you
+            // can also hardcode a specific target for an executable or library
+            // definition if desireable (e.g. firmware for embedded devices).
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+
+    // This declares intent for the executable to be installed into the
+    // install prefix when running `zig build` (i.e. when executing the default
+    // step). By default the install prefix is `zig-out/` but can be overridden
+    // by passing `--prefix` or `-p`.
+    b.installArtifact(exe);
+
+    // This creates a top level step. Top level steps have a name and can be
+    // invoked by name when running `zig build` (e.g. `zig build run`).
+    // This will evaluate the `run` step rather than the default step.
+    // For a top level step to actually do something, it must depend on other
+    // steps (e.g. a Run step, as we will see in a moment).
+    const run_step = b.step("run", "Run the app");
+
+    // This creates a RunArtifact step in the build graph. A RunArtifact step
+    // invokes an executable compiled by Zig. Steps will only be executed by the
+    // runner if invoked directly by the user (in the case of top level steps)
+    // or if another step depends on it, so it's up to you to define when and
+    // how this Run step will be executed. In our case we want to run it when
+    // the user runs `zig build run`, so we create a dependency link.
+    const run_cmd = if (use_orb) addOrbRun(b, orb_machine, exe) else b.addRunArtifact(exe);
+    run_step.dependOn(&run_cmd.step);
+
+    // By making the run step depend on the default step, it will be run from the
+    // installation directory rather than directly from within the cache directory.
+    run_cmd.step.dependOn(b.getInstallStep());
+
+    // This allows the user to pass arguments to the application in the build
+    // command itself, like this: `zig build run -- arg1 arg2 etc`
+    run_cmd.addPassthruArgs();
+
+    // Creates an executable that will run `test` blocks from the executable's
+    // root module. Only files reachable through imports from main.zig are
+    // included, so a file's tests run only once something imports it.
+    const exe_tests = b.addTest(.{
+        .root_module = exe.root_module,
+    });
+
+    // A run step that will run the test executable.
+    const run_exe_tests = if (use_orb) addOrbRun(b, orb_machine, exe_tests) else b.addRunArtifact(exe_tests);
+
+    // A top level step for running all tests.
+    const test_step = b.step("test", "Run tests");
+    test_step.dependOn(&run_exe_tests.step);
+
+    // Just like flags, top level steps are also listed in the `--help` menu.
+    //
+    // The Zig build system is entirely implemented in userland, which means
+    // that it cannot hook into private compiler APIs. All compilation work
+    // orchestrated by the build system will result in other Zig compiler
+    // subcommands being invoked with the right flags defined. You can observe
+    // these invocations when one fails (or you pass a flag to increase
+    // verbosity) to validate assumptions and diagnose problems.
+    //
+    // Lastly, the Zig build system is relatively simple and self-contained,
+    // and reading its source code will allow you to master it.
+}
+
+// Runs `artifact` inside the OrbStack machine `machine` via `orb -m`. Test
+// binaries run in the test runner's standalone mode here, since the build
+// runner's test protocol isn't forwarded through `orb`; a failing test still
+// fails the step through its exit code.
+fn addOrbRun(b: *std.Build, machine: []const u8, artifact: *std.Build.Step.Compile) *std.Build.Step.Run {
+    const run = b.addSystemCommand(&.{ "orb", "-m", machine });
+    run.setName(b.fmt("run {t} {s} on {s}", .{ artifact.kind, artifact.name, machine }));
+    run.addArtifactArg2(artifact, .{ .make_absolute = true });
+    return run;
+}

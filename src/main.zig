@@ -1,0 +1,98 @@
+const std = @import("std");
+const Io = std.Io;
+const linux = std.os.linux;
+const sys = @import("sys.zig");
+
+pub fn main(init: std.process.Init) !void {
+    _ = init;
+
+    // Create a non-blocking IPv4 TCP socket. This becomes the listener.
+    const listen_fd = try sys.socket(linux.AF.INET, linux.SOCK.STREAM | linux.SOCK.NONBLOCK, 0);
+    // Never runs, because the event loop never exits. That's fine: when the
+    // process dies (Ctrl-C), the kernel closes all its fds.
+    defer sys.close(listen_fd);
+
+    // Allow restarting the server while old connections on the port are
+    // still in TIME_WAIT. Must come before bind().
+    try sys.setsockopt(listen_fd, linux.SOL.SOCKET, linux.SO.REUSEADDR, 1);
+
+    const addr: sys.Ip4Address = .{ .ip = .{ 127, 0, 0, 1 }, .port = 1883 };
+    try sys.bind(listen_fd, addr);
+    try sys.listen(listen_fd, 128);
+
+    // The epoll instance: watches the listener and every client for us.
+    const epfd = try sys.epollCreate();
+    defer sys.close(epfd);
+    // Readable listener = a connection is waiting in the accept queue.
+    try sys.epollAdd(epfd, listen_fd, linux.EPOLL.IN, .{ .fd = listen_fd });
+    std.debug.print("listening on {f}\n", .{addr});
+
+    var events: [64]sys.EpollEvent = undefined;
+
+    // Event loop: sleep until something is ready, handle it, repeat.
+    while (true) {
+        const ready = try sys.epollWait(epfd, &events, -1);
+        for (ready) |ev| {
+            std.debug.print("ready: fd {d}\n", .{ev.data.fd});
+            if (ev.data.fd == listen_fd) {
+                // A connection is waiting in the accept queue. More than one
+                // may be waiting, so keep accepting until the queue is empty.
+                while (true) {
+                    const client = sys.accept(listen_fd, linux.SOCK.NONBLOCK) catch |err| switch (err) {
+                        // Queue is empty: we've taken every waiting connection.
+                        error.WouldBlock => break,
+                        else => {
+                            std.debug.print("accept failed: {t}\n", .{err});
+                            break;
+                        },
+                    };
+                    std.debug.print("client fd = {d}, from {f}\n", .{ client.fd, client.addr });
+
+                    // Watch this client for incoming data. Its fd goes in
+                    // `data`, so its events come back tagged with its fd.
+                    sys.epollAdd(epfd, client.fd, linux.EPOLL.IN, .{ .fd = client.fd }) catch |err| {
+                        // If epoll can't watch it, we could never serve it.
+                        std.debug.print("epoll add client failed: {t}\n", .{err});
+                        sys.close(client.fd);
+                    };
+                }
+            } else {
+                // A client is readable: it sent data, closed, or broke.
+                const client_fd = ev.data.fd;
+                echo(client_fd) catch |err| {
+                    // ClientClosed is the normal way a client leaves. Anything
+                    // else is a real error. Either way, we're done with it.
+                    if (err != error.ClientClosed) {
+                        std.debug.print("client fd = {d} error: {t}\n", .{ client_fd, err });
+                    }
+                    std.debug.print("client fd = {d} disconnected\n", .{client_fd});
+                    // Closing the fd also removes it from epoll.
+                    sys.close(client_fd);
+                };
+            }
+        }
+    }
+}
+
+/// Read everything the client has sent so far and send it straight back.
+/// Returns normally once there's nothing more to read right now, so the loop
+/// can go back to epoll_wait. Returns error.ClientClosed when the client has
+/// closed the connection.
+fn echo(client_fd: sys.fd_t) !void {
+    var buf: [1024]u8 = undefined;
+    while (true) {
+        // One read is NOT one message: TCP is a byte stream, so a read returns
+        // whatever has arrived so far, up to buf.len.
+        const n = sys.read(client_fd, &buf) catch |err| switch (err) {
+            // Nothing more to read right now. Back to epoll_wait.
+            error.WouldBlock => return,
+            else => return err,
+        };
+        if (n == 0) return error.ClientClosed;
+
+        const bytes = buf[0..n];
+        std.debug.print("got {d} bytes\n  text: {s}\n  hex:  {x}\n", .{ n, bytes, bytes });
+
+        try sys.sendAll(client_fd, bytes);
+    }
+}
