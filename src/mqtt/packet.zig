@@ -19,11 +19,8 @@ pub fn packetLength(buf: []const u8) !?usize {
     if (buf.len == 0) return null;
 
     var multiplier_index: u8 = 0;
-    // Place value of each length byte: 1, 128, 128 x 128, 128 x 128 x 128.
     const multiplier_vals: [4]usize = .{ 1, 128, 16_384, 2_097_152 };
 
-    // Header size so far: 1 type byte + 1 length byte. Each extra length byte
-    // adds 1 below, and each length byte's value is added on top.
     var total: usize = 2;
 
     // The length bytes start right after the type byte.
@@ -31,22 +28,17 @@ pub fn packetLength(buf: []const u8) !?usize {
         // MQTT allows at most 4 length bytes, so the 4th can't say "more".
         if ((byte & 0x80) != 0 and multiplier_index == 3) return error.InvalidLength;
 
-        // Value 0 with no "more" bit: the length ends here.
         if (byte == 0x00) return total;
 
-        // The lower 7 bits are this byte's piece of the value, scaled by its
-        // place value.
         const value = (byte & 0x7F) * multiplier_vals[multiplier_index];
         total += value;
 
-        // Top bit set: another length byte follows.
         if ((byte & 0x80) != 0) {
             multiplier_index += 1;
             total += 1;
             continue;
         }
 
-        // Top bit clear: that was the last length byte.
         return total;
     }
 

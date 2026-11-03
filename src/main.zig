@@ -112,10 +112,16 @@ fn handleClient(client_state: *Client) !void {
         // The new bytes extend what was already buffered.
         client_state.in_len += n;
 
-        // Everything buffered so far: earlier leftovers plus this read.
-        const bytes = client_state.in_buf[0..client_state.in_len];
-        std.debug.print("got {d} bytes, {d} buffered\n  text: {s}\n  hex:  {x}\n", .{ n, client_state.in_len, bytes, bytes });
+        while (try packet.packetLength(client_state.in_buf[0..client_state.in_len])) |total| {
+            if (total > client_state.in_buf.len) return error.PacketTooLarge;
+            if (client_state.in_len < total) break;
 
-        try sys.sendAll(client_state.fd, bytes);
+            const b = client_state.in_buf[0..total];
+            try sys.sendAll(client_state.fd, b);
+
+            const leftover = client_state.in_buf[total..client_state.in_len];
+            std.mem.copyForwards(u8, client_state.in_buf[0..leftover.len], leftover);
+            client_state.in_len = leftover.len;
+        }
     }
 }
