@@ -53,8 +53,8 @@ fn handleDisconnect(self: *Broker, c: *Client, flags: u4, body: []const u8) !voi
 }
 
 /// Decodes a CONNECT, decides whether to accept it, and answers with a
-/// CONNACK. Returns an error, which closes the connection, when the packet is
-/// malformed (no CONNACK) or when the CONNACK refuses the client.
+/// CONNACK. A refused client gets its CONNACK and is then marked closing. A
+/// malformed packet returns an error and gets no CONNACK.
 fn handleConnect(self: *Broker, c: *Client, flags: u4, body: []const u8) !void {
     // CONNECT is sent once, as the first packet. A second one is a protocol
     // violation.
@@ -67,7 +67,8 @@ fn handleConnect(self: *Broker, c: *Client, flags: u4, body: []const u8) !void {
 
     if (connect.protocol_level != 4) {
         try sendConnAck(c, .unacceptable_protocol_version);
-        return error.ConnectRefused;
+        c.closing = true;
+        return;
     }
 
     // An empty ID asks the server to pick one, which is only allowed with a
@@ -75,7 +76,8 @@ fn handleConnect(self: *Broker, c: *Client, flags: u4, body: []const u8) !void {
     const id = connect.client_id;
     if ((id.len == 0 and !connect.clean_session) or id.len > Client.max_client_id_len) {
         try sendConnAck(c, .identifier_rejected);
-        return error.ConnectRefused;
+        c.closing = true;
+        return;
     }
 
     // TODO: keep connect.will once PUBLISH exists.
