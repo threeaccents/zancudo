@@ -30,6 +30,12 @@ addr: Ip4Address,
 /// or a second CONNECT, is a protocol violation.
 connected: bool = false,
 
+/// Set when the connection should be closed as a normal part of the
+/// protocol, not because something failed: the client sent DISCONNECT, hung
+/// up, or was refused with a CONNACK. Once set, no more packets are handled,
+/// and the event loop closes the connection.
+closing: bool = false,
+
 /// The client ID from CONNECT, copied out of in_buf so it outlives the
 /// packet. Only the first client_id_len bytes are valid.
 client_id_buf: [max_client_id_len]u8 = undefined,
@@ -49,8 +55,8 @@ keep_alive: u16 = 0,
 /// packet buffered for the next call.
 ///
 /// Returns normally once there's nothing more to read right now, so the event
-/// loop can go back to epoll_wait. Returns error.ClientClosed when the client
-/// has closed the connection.
+/// loop can go back to epoll_wait, or once `closing` is set, so the event loop
+/// can close the connection. Returns an error only when something went wrong.
 pub fn onReadable(self: *Client, broker: *Broker) !void {
     while (true) {
         // One read is NOT one message: TCP is a byte stream, so a read returns
@@ -62,7 +68,11 @@ pub fn onReadable(self: *Client, broker: *Broker) !void {
             error.WouldBlock => return,
             else => return err,
         };
-        if (n == 0) return error.ClientClosed;
+        // 0 bytes means the client closed its side of the connection.
+        if (n == 0) {
+            self.closing = true;
+            return;
+        }
 
         // The new bytes extend what was already buffered.
         self.in_len += n;
@@ -75,6 +85,10 @@ pub fn onReadable(self: *Client, broker: *Broker) !void {
             if (self.in_len < packet_len) break;
 
             try broker.handlePacket(self, header, self.in_buf[header.header_len..packet_len]);
+
+            // The packet ended the connection (DISCONNECT, a refused CONNECT).
+            // Anything after it is ignored.
+            if (self.closing) return;
 
             const leftover = self.in_buf[packet_len..self.in_len];
             std.mem.copyForwards(u8, self.in_buf[0..leftover.len], leftover);

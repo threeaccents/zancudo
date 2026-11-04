@@ -9,6 +9,7 @@ const Client = @import("Client.zig");
 const Broker = @import("Broker.zig");
 const EpollEvent = sys.EpollEvent;
 const Ip4Address = sys.Ip4Address;
+const Allocator = std.mem.Allocator;
 
 const log = std.log.scoped(.main);
 
@@ -62,13 +63,13 @@ pub fn main(init: std.process.Init) !void {
                         },
                     };
                     log.info("client fd = {d}, from {f}", .{ client.fd, client.addr });
-                    const client_state = alloc.create(Client) catch |err| {
+                    const c = alloc.create(Client) catch |err| {
                         log.err("failed to allocate client state: {t}", .{err});
                         sys.close(client.fd);
                         continue;
                     };
 
-                    client_state.* = .{
+                    c.* = .{
                         .fd = client.fd,
                         .addr = client.addr,
                     };
@@ -76,30 +77,37 @@ pub fn main(init: std.process.Init) !void {
                     // Watch this client for incoming data. A pointer to its
                     // state goes in `data`, so each of its events leads
                     // straight back to its Client.
-                    sys.epollAdd(epfd, client.fd, linux.EPOLL.IN, .{ .ptr = @intFromPtr(client_state) }) catch |err| {
+                    sys.epollAdd(epfd, client.fd, linux.EPOLL.IN, .{ .ptr = @intFromPtr(c) }) catch |err| {
                         // If epoll can't watch it, we could never serve it.
                         log.err("epoll add client failed: {t}", .{err});
                         sys.close(client.fd);
-                        alloc.destroy(client_state);
+                        alloc.destroy(c);
                     };
                 }
             } else {
                 // A client is readable: it sent data, closed, or broke.
-                const client_state = @as(*Client, @ptrFromInt(ev.data.ptr));
-                client_state.onReadable(&broker) catch |err| {
-                    // ClientClosed is the normal way a client leaves. Anything
-                    // else is a real error. Either way, we're done with it.
-                    if (err != error.ClientClosed) {
-                        log.err("client fd = {d} error: {t}", .{ client_state.fd, err });
-                    }
-                    log.info("client fd = {d} disconnected", .{client_state.fd});
-                    // Closing the fd also removes it from epoll.
-                    sys.close(client_state.fd);
-                    alloc.destroy(client_state);
+                const c: *Client = @ptrFromInt(ev.data.ptr);
+
+                c.onReadable(&broker) catch |err| {
+                    log.err("client fd = {d} error: {t}", .{ c.fd, err });
+
+                    closeClient(alloc, c);
+                    continue;
                 };
+
+                if (c.closing) {
+                    closeClient(alloc, c);
+                }
             }
         }
     }
+}
+
+fn closeClient(alloc: Allocator, c: *Client) void {
+    log.info("client fd = {d} disconnected", .{c.fd});
+    // Closing the fd also removes it from epoll.
+    sys.close(c.fd);
+    alloc.destroy(c);
 }
 
 // Make `zig build test` run the tests in these files too. Zig only runs tests
