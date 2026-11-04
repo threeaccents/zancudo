@@ -11,6 +11,7 @@ const ConnAck = mqtt.ConnAck;
 const Connect = mqtt.Connect;
 const FixedHeader = mqtt.FixedHeader;
 const PingResp = mqtt.PingResp;
+const Subscribe = mqtt.Subscribe;
 
 const log = std.log.scoped(.broker);
 
@@ -30,10 +31,24 @@ pub fn handlePacket(self: *Broker, c: *Client, header: FixedHeader, body: []cons
         .connect => try self.handleConnect(c, header.flags, body),
         .disconnect => try self.handleDisconnect(c, header.flags, body),
         .pingreq => try self.handlePingReq(c, header.flags, body),
+        .subscribe => try self.handleSubscribe(c, header.flags, body),
         else => {
             return error.PacketTypeNotImplementedYet;
         },
     }
+}
+
+fn handleSubscribe(self: *Broker, c: *Client, flags: u4, body: []const u8) !void {
+    _ = self;
+    _ = c;
+
+    if (flags != 0x02) return error.Malformed;
+
+    var topics: [32]Subscribe.Topic = undefined;
+
+    const sub = try Subscribe.decode(body, &topics);
+
+    _ = sub;
 }
 
 fn handlePingReq(self: *Broker, c: *Client, flags: u4, body: []const u8) !void {
