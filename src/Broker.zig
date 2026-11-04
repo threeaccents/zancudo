@@ -38,6 +38,5 @@ fn handleConnect(broker: *Broker, c: *Client, flags: u4, body: []const u8) !void
     _ = connect_flags;
 
     const keep_alive = std.mem.readInt(u16, body[8..10], .big);
-    // should probably add this to client struct
-    _ = keep_alive;
+    c.keep_alive = keep_alive;
 }

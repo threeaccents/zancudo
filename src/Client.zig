@@ -12,6 +12,7 @@ fd: sys.fd_t,
 in_len: usize = 0,
 in_buf: [4096]u8 = undefined,
 addr: sys.Ip4Address,
+keep_alive: u64,
 
 /// Called when epoll reports this client readable. Reads everything that has
 /// arrived, hands each complete packet to the broker, and keeps any partial
