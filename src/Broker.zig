@@ -28,6 +28,7 @@ pub fn handlePacket(self: *Broker, c: *Client, header: FixedHeader, body: []cons
 
     switch (header.packet_type) {
         .connect => try self.handleConnect(c, header.flags, body),
+        .disconnect => try self.handleDisconnect(c, header.flags, body),
         .pingreq => try self.handlePingReq(c, header.flags, body),
         else => {
             return error.PacketTypeNotImplementedYet;
@@ -41,6 +42,14 @@ fn handlePingReq(self: *Broker, c: *Client, flags: u4, body: []const u8) !void {
     if (flags != 0 or body.len != 0) return error.Malformed;
 
     try sendPingResp(c);
+}
+
+fn handleDisconnect(self: *Broker, c: *Client, flags: u4, body: []const u8) !void {
+    _ = self;
+
+    if (flags != 0 or body.len != 0) return error.Malformed;
+
+    c.closing = true;
 }
 
 /// Decodes a CONNECT, decides whether to accept it, and answers with a
