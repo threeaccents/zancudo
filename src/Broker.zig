@@ -11,6 +11,12 @@ const ConnAck = mqtt.ConnAck;
 const Connect = mqtt.Connect;
 const FixedHeader = mqtt.FixedHeader;
 
+const log = std.log.scoped(.broker);
+
+/// The number in the next ID handed to a client that connects with an empty
+/// client ID.
+next_client_id: u64 = 0,
+
 /// Handles one complete packet from `c`. `body` is everything after the fixed
 /// header. It points into the client's input buffer, which gets reused for
 /// the next packet, so it's only valid during this call: anything a handler
@@ -28,8 +34,6 @@ pub fn handlePacket(self: *Broker, c: *Client, header: FixedHeader, body: []cons
 /// CONNACK. Returns an error, which closes the connection, when the packet is
 /// malformed (no CONNACK) or when the CONNACK refuses the client.
 fn handleConnect(self: *Broker, c: *Client, flags: u4, body: []const u8) !void {
-    _ = self;
-
     // CONNECT is sent once, as the first packet. A second one is a protocol
     // violation.
     if (c.connected) return error.ProtocolViolation;
@@ -52,17 +56,27 @@ fn handleConnect(self: *Broker, c: *Client, flags: u4, body: []const u8) !void {
         return error.ConnectRefused;
     }
 
-    // TODO: assign a unique ID when id is empty.
     // TODO: keep connect.will once PUBLISH exists.
     // TODO: check connect.username and connect.password once there's auth.
 
-    // id points into in_buf, which the next packet overwrites, so copy it.
-    @memcpy(c.client_id_buf[0..id.len], id);
-    c.client_id_len = @intCast(id.len);
+    if (id.len == 0) {
+        // The client left the ID to us. MQTT 3.1.1 never tells the client
+        // which one it got, so it only has to be unique among connected
+        // clients, and a counter is enough. "z-" plus at most 20 digits is
+        // 22 bytes, so it always fits the 23-byte buffer.
+        const assigned = std.fmt.bufPrint(&c.client_id_buf, "z-{d}", .{self.next_client_id}) catch unreachable;
+        self.next_client_id += 1;
+        c.client_id_len = @intCast(assigned.len);
+    } else {
+        // id points into in_buf, which the next packet overwrites, so copy it.
+        @memcpy(c.client_id_buf[0..id.len], id);
+        c.client_id_len = @intCast(id.len);
+    }
     c.clean_session = connect.clean_session;
     c.keep_alive = connect.keep_alive;
     c.connected = true;
 
+    log.info("client fd = {d} connected as {s}", .{ c.fd, c.client_id_buf[0..c.client_id_len] });
     try sendConnAck(c, .accepted);
 }
 
