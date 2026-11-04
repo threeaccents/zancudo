@@ -41,7 +41,7 @@ fn handleConnect(self: *Broker, c: *Client, flags: u4, body: []const u8) !void {
     // violation.
     if (c.connected) return error.ProtocolViolation;
 
-    const connect = try Connect.decode(flags, body);
+    const connect = Connect.decode(flags, body) catch return error.Malformed;
 
     // Not MQTT at all, so there's no point sending an MQTT reply.
     if (!std.mem.eql(u8, connect.protocol_name, "MQTT")) return error.InvalidProtocolName;
@@ -63,10 +63,7 @@ fn handleConnect(self: *Broker, c: *Client, flags: u4, body: []const u8) !void {
     // TODO: check connect.username and connect.password once there's auth.
 
     if (id.len == 0) {
-        // The client left the ID to us. MQTT 3.1.1 never tells the client
-        // which one it got, so it only has to be unique among connected
-        // clients, and a counter is enough. "z-" plus at most 20 digits is
-        // 22 bytes, so it always fits the 23-byte buffer.
+        // create an id for them
         const assigned = std.fmt.bufPrint(&c.client_id_buf, "z-{d}", .{self.next_client_id}) catch unreachable;
         self.next_client_id += 1;
         c.client_id_len = @intCast(assigned.len);
