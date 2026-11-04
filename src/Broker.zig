@@ -6,12 +6,14 @@ const Broker = @This();
 const std = @import("std");
 const mqtt = @import("mqtt.zig");
 const Client = @import("Client.zig");
+const FixedHeader = mqtt.FixedHeader;
+const Reader = mqtt.Reader;
 
 /// Handles one complete packet from `c`. `body` is everything after the fixed
 /// header. It points into the client's input buffer, which gets reused for
 /// the next packet, so it's only valid during this call: anything a handler
 /// keeps must be copied.
-pub fn handlePacket(self: *Broker, c: *Client, header: mqtt.FixedHeader, body: []const u8) !void {
+pub fn handlePacket(self: *Broker, c: *Client, header: FixedHeader, body: []const u8) !void {
     switch (header.packet_type) {
         .connect => try self.handleConnect(c, header.flags, body),
         else => {
@@ -25,7 +27,7 @@ fn handleConnect(self: *Broker, c: *Client, flags: u4, body: []const u8) !void {
 
     if (flags != 0) return error.Malformed;
 
-    const r = mqtt.Reader.init(body);
+    const r = Reader.init(body);
 
     const proto_name_len = r.readU16() catch return error.Malformed;
     const proto_name = r.readBytes(proto_name_len) catch return error.Malformed;

@@ -3,11 +3,12 @@
 //! client.
 
 const std = @import("std");
-const Io = std.Io;
 const linux = std.os.linux;
 const sys = @import("sys.zig");
 const Client = @import("Client.zig");
 const Broker = @import("Broker.zig");
+const EpollEvent = sys.EpollEvent;
+const Ip4Address = sys.Ip4Address;
 
 const log = std.log.scoped(.main);
 
@@ -30,7 +31,7 @@ pub fn main(init: std.process.Init) !void {
     // still in TIME_WAIT. Must come before bind().
     try sys.setsockopt(listen_fd, linux.SOL.SOCKET, linux.SO.REUSEADDR, 1);
 
-    const addr: sys.Ip4Address = .{ .ip = .{ 127, 0, 0, 1 }, .port = 1883 };
+    const addr: Ip4Address = .{ .ip = .{ 127, 0, 0, 1 }, .port = 1883 };
     try sys.bind(listen_fd, addr);
     try sys.listen(listen_fd, 128);
 
@@ -42,7 +43,7 @@ pub fn main(init: std.process.Init) !void {
     try sys.epollAdd(epfd, listen_fd, linux.EPOLL.IN, .{ .ptr = 0 });
     log.info("listening on {f}", .{addr});
 
-    var events: [64]sys.EpollEvent = undefined;
+    var events: [64]EpollEvent = undefined;
 
     // MQTT state shared by every client. Empty for now.
     var broker: Broker = .{};

@@ -4,8 +4,9 @@ const Client = @This();
 
 const std = @import("std");
 const sys = @import("sys.zig");
-const mqtt = @import("mqtt.zig");
 const Broker = @import("Broker.zig");
+const FixedHeader = @import("mqtt.zig").FixedHeader;
+const Ip4Address = sys.Ip4Address;
 
 /// The client's socket.
 fd: sys.fd_t,
@@ -18,7 +19,7 @@ in_len: usize = 0,
 in_buf: [4096]u8 = undefined,
 
 /// Where the client connected from.
-addr: sys.Ip4Address,
+addr: Ip4Address,
 
 /// The keep-alive from the client's CONNECT, in seconds.
 keep_alive: u64,
@@ -46,7 +47,7 @@ pub fn onReadable(self: *Client, broker: *Broker) !void {
         // The new bytes extend what was already buffered.
         self.in_len += n;
 
-        while (try mqtt.FixedHeader.parse(self.in_buf[0..self.in_len])) |header| {
+        while (try FixedHeader.parse(self.in_buf[0..self.in_len])) |header| {
             const packet_len = header.packetLen();
             // TODO grow the buffer to fit up to the max mqtt packet size.
             if (packet_len > self.in_buf.len) return error.PacketTooLarge;
