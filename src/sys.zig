@@ -9,6 +9,8 @@
 const std = @import("std");
 const linux = std.os.linux;
 
+const log = std.log.scoped(.sys);
+
 pub const fd_t = linux.fd_t;
 
 /// An IPv4 address and port, in normal byte order. The wrappers convert to
@@ -232,6 +234,6 @@ pub fn close(fd: fd_t) void {
 
 /// Log an errno we didn't plan for and turn it into error.Unexpected.
 fn unexpected(err: linux.E) error{Unexpected} {
-    std.debug.print("unexpected errno: {t}\n", .{err});
+    log.err("unexpected errno: {t}", .{err});
     return error.Unexpected;
 }

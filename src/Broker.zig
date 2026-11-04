@@ -1,42 +1,44 @@
 //! The MQTT side of the server: decides what each packet means and responds
 //! to it. State shared by all clients (client IDs, subscriptions) will live
 //! here as fields.
+const Broker = @This();
 
 const std = @import("std");
+const mqtt = @import("mqtt.zig");
 const Client = @import("Client.zig");
-const FixedHeader = @import("mqtt/packet.zig").FixedHeader;
-
-const Broker = @This();
 
 /// Handles one complete packet from `c`. `body` is everything after the fixed
 /// header. It points into the client's input buffer, which gets reused for
 /// the next packet, so it's only valid during this call: anything a handler
 /// keeps must be copied.
-pub fn handlePacket(broker: *Broker, c: *Client, header: FixedHeader, body: []const u8) !void {
+pub fn handlePacket(self: *Broker, c: *Client, header: mqtt.FixedHeader, body: []const u8) !void {
     switch (header.packet_type) {
-        .connect => try broker.handleConnect(c, header.flags, body),
+        .connect => try self.handleConnect(c, header.flags, body),
         else => {
             return error.PacketTypeNotImplementedYet;
         },
     }
 }
 
-fn handleConnect(broker: *Broker, c: *Client, flags: u4, body: []const u8) !void {
+fn handleConnect(self: *Broker, c: *Client, flags: u4, body: []const u8) !void {
+    _ = self;
+
     if (flags != 0) return error.Malformed;
-    // todo look into creating a reader to handle malformed bodies
-    _ = broker;
 
-    const protocol_name_len = std.mem.readInt(u16, body[0..2], .big);
-    const protocol_name = body[2..(protocol_name_len + 2)];
+    const r = mqtt.Reader.init(body);
 
-    if (!std.mem.eql(u8, protocol_name, "MQTT")) return error.InvalidProtocolName;
+    const proto_name_len = r.readU16() catch return error.Malformed;
+    const proto_name = r.readBytes(proto_name_len) catch return error.Malformed;
+
+    if (!std.mem.eql(u8, proto_name, "MQTT")) return error.InvalidProtocolName;
 
     // protocol level
-    if (body[6] != 0x04) return error.InvalidProtocolLevel;
+    if (try r.readByte() != 0x04) return error.InvalidProtocolLevel;
 
-    const connect_flags = body[7];
+    const connect_flags = r.readByte() catch return error.Malformed;
+
     _ = connect_flags;
 
-    const keep_alive = std.mem.readInt(u16, body[8..10], .big);
+    const keep_alive = r.readU16() catch return error.Malformed;
     c.keep_alive = keep_alive;
 }

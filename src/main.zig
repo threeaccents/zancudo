@@ -1,3 +1,7 @@
+//! Entry point: sets up the listening socket and runs the event loop. Each
+//! ready event is either a new connection on the listener or data from a
+//! client.
+
 const std = @import("std");
 const Io = std.Io;
 const linux = std.os.linux;
@@ -5,14 +9,16 @@ const sys = @import("sys.zig");
 const Client = @import("Client.zig");
 const Broker = @import("Broker.zig");
 
+const log = std.log.scoped(.main);
+
 // Make `zig build test` run the tests in these files too. Zig only runs tests
 // in files it reaches through imports from here.
 test {
-    _ = @import("mqtt/packet.zig");
+    _ = @import("mqtt.zig");
 }
 
 pub fn main(init: std.process.Init) !void {
-    const gpa = init.gpa;
+    const alloc = init.gpa;
 
     // Create a non-blocking IPv4 TCP socket. This becomes the listener.
     const listen_fd = try sys.socket(linux.AF.INET, linux.SOCK.STREAM | linux.SOCK.NONBLOCK, 0);
@@ -34,7 +40,7 @@ pub fn main(init: std.process.Init) !void {
     // Readable listener = a connection is waiting in the accept queue.
     // data.ptr = 0 marks the listener: no Client ever lives at address 0.
     try sys.epollAdd(epfd, listen_fd, linux.EPOLL.IN, .{ .ptr = 0 });
-    std.debug.print("listening on {f}\n", .{addr});
+    log.info("listening on {f}", .{addr});
 
     var events: [64]sys.EpollEvent = undefined;
 
@@ -45,7 +51,7 @@ pub fn main(init: std.process.Init) !void {
     while (true) {
         const ready = try sys.epollWait(epfd, &events, -1);
         for (ready) |ev| {
-            std.debug.print("ready: data.ptr = 0x{x}\n", .{ev.data.ptr});
+            log.debug("ready: data.ptr = 0x{x}", .{ev.data.ptr});
             // check if we have a new connection or handling a client.
             // We register those 2 events with the same epoll instance.
             if (ev.data.ptr == 0) {
@@ -56,13 +62,13 @@ pub fn main(init: std.process.Init) !void {
                         // Queue is empty: we've taken every waiting connection.
                         error.WouldBlock => break,
                         else => {
-                            std.debug.print("accept failed: {t}\n", .{err});
+                            log.err("accept failed: {t}", .{err});
                             break;
                         },
                     };
-                    std.debug.print("client fd = {d}, from {f}\n", .{ client.fd, client.addr });
-                    const client_state = gpa.create(Client) catch |err| {
-                        std.debug.print("failed to allocate client state: {t}\n", .{err});
+                    log.info("client fd = {d}, from {f}", .{ client.fd, client.addr });
+                    const client_state = alloc.create(Client) catch |err| {
+                        log.err("failed to allocate client state: {t}", .{err});
                         sys.close(client.fd);
                         continue;
                     };
@@ -77,9 +83,9 @@ pub fn main(init: std.process.Init) !void {
                     // straight back to its Client.
                     sys.epollAdd(epfd, client.fd, linux.EPOLL.IN, .{ .ptr = @intFromPtr(client_state) }) catch |err| {
                         // If epoll can't watch it, we could never serve it.
-                        std.debug.print("epoll add client failed: {t}\n", .{err});
+                        log.err("epoll add client failed: {t}", .{err});
                         sys.close(client.fd);
-                        gpa.destroy(client_state);
+                        alloc.destroy(client_state);
                     };
                 }
             } else {
@@ -89,12 +95,12 @@ pub fn main(init: std.process.Init) !void {
                     // ClientClosed is the normal way a client leaves. Anything
                     // else is a real error. Either way, we're done with it.
                     if (err != error.ClientClosed) {
-                        std.debug.print("client fd = {d} error: {t}\n", .{ client_state.fd, err });
+                        log.err("client fd = {d} error: {t}", .{ client_state.fd, err });
                     }
-                    std.debug.print("client fd = {d} disconnected\n", .{client_state.fd});
+                    log.info("client fd = {d} disconnected", .{client_state.fd});
                     // Closing the fd also removes it from epoll.
                     sys.close(client_state.fd);
-                    gpa.destroy(client_state);
+                    alloc.destroy(client_state);
                 };
             }
         }
