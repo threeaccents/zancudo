@@ -22,6 +22,9 @@ next_client_id: u64 = 0,
 /// the next packet, so it's only valid during this call: anything a handler
 /// keeps must be copied.
 pub fn handlePacket(self: *Broker, c: *Client, header: FixedHeader, body: []const u8) !void {
+    // connect has to be the first msg sent
+    if (!c.connected and header.packet_type != .connect) return error.ProtocolViolation;
+
     switch (header.packet_type) {
         .connect => try self.handleConnect(c, header.flags, body),
         else => {
