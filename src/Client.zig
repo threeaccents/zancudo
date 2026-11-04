@@ -8,6 +8,11 @@ const Broker = @import("Broker.zig");
 const FixedHeader = @import("mqtt.zig").FixedHeader;
 const Ip4Address = sys.Ip4Address;
 
+/// MQTT 3.1.1 servers only have to accept client IDs of 1 to 23 bytes, so
+/// that's all client_id_buf has room for. Longer IDs get CONNACK
+/// .identifier_rejected.
+pub const max_client_id_len = 23;
+
 /// The client's socket.
 fd: sys.fd_t,
 
@@ -21,8 +26,23 @@ in_buf: [4096]u8 = undefined,
 /// Where the client connected from.
 addr: Ip4Address,
 
-/// The keep-alive from the client's CONNECT, in seconds.
-keep_alive: u64,
+/// True once a valid CONNECT has been handled. Any other packet before it,
+/// or a second CONNECT, is a protocol violation.
+connected: bool = false,
+
+/// The client ID from CONNECT, copied out of in_buf so it outlives the
+/// packet. Only the first client_id_len bytes are valid.
+client_id_buf: [max_client_id_len]u8 = undefined,
+
+/// How many bytes of client_id_buf hold the client ID.
+client_id_len: u8 = 0,
+
+/// The clean session flag from CONNECT. True: the session ends when this
+/// connection does.
+clean_session: bool = true,
+
+/// The keep-alive from the client's CONNECT, in seconds. 0 means no timeout.
+keep_alive: u16 = 0,
 
 /// Called when epoll reports this client readable. Reads everything that has
 /// arrived, hands each complete packet to the broker, and keeps any partial
