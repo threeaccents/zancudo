@@ -3,8 +3,7 @@ const Io = std.Io;
 const linux = std.os.linux;
 const sys = @import("sys.zig");
 const Client = @import("Client.zig");
-const packet = @import("mqtt/packet.zig");
-const FixedHeader = packet.FixedHeader;
+const Broker = @import("Broker.zig");
 
 // Make `zig build test` run the tests in these files too. Zig only runs tests
 // in files it reaches through imports from here.
@@ -38,6 +37,9 @@ pub fn main(init: std.process.Init) !void {
     std.debug.print("listening on {f}\n", .{addr});
 
     var events: [64]sys.EpollEvent = undefined;
+
+    // MQTT state shared by every client. Empty for now.
+    var broker: Broker = .{};
 
     // Event loop: sleep until something is ready, handle it, repeat.
     while (true) {
@@ -81,7 +83,7 @@ pub fn main(init: std.process.Init) !void {
             } else {
                 // A client is readable: it sent data, closed, or broke.
                 const client_state = @as(*Client, @ptrFromInt(ev.data.ptr));
-                handleClient(client_state) catch |err| {
+                client_state.onReadable(&broker) catch |err| {
                     // ClientClosed is the normal way a client leaves. Anything
                     // else is a real error. Either way, we're done with it.
                     if (err != error.ClientClosed) {
@@ -95,49 +97,4 @@ pub fn main(init: std.process.Init) !void {
             }
         }
     }
-}
-
-fn handleClient(c: *Client) !void {
-    while (true) {
-        // One read is NOT one message: TCP is a byte stream, so a read returns
-        // whatever has arrived so far, up to the free space left in in_buf.
-        // Read in after the bytes already buffered, so a partial message
-        // from an earlier read isn't overwritten.
-        const n = sys.read(c.fd, c.in_buf[c.in_len..]) catch |err| switch (err) {
-            // Nothing more to read right now. Back to epoll_wait.
-            error.WouldBlock => return,
-            else => return err,
-        };
-        if (n == 0) return error.ClientClosed;
-
-        // The new bytes extend what was already buffered.
-        c.in_len += n;
-
-        while (try FixedHeader.parse(c.in_buf[0..c.in_len])) |header| {
-            const packet_len = header.packetLen();
-            // TODO grow the buffer to fit up to the max mqtt packet size.
-            if (packet_len > c.in_buf.len) return error.PacketTooLarge;
-            // havent received the full packet yet
-            if (c.in_len < packet_len) break;
-
-            try handlePacket(c, header, c.in_buf[header.header_len..packet_len]);
-
-            const leftover = c.in_buf[packet_len..c.in_len];
-            std.mem.copyForwards(u8, c.in_buf[0..leftover.len], leftover);
-            c.in_len = leftover.len;
-        }
-    }
-}
-
-fn handlePacket(c: *Client, header: FixedHeader, body: []const u8) !void {
-    switch (header.packet_type) {
-        .connect => try handleConnect(c, header.flags, body),
-        else => {
-            return error.PacketTypeNotImplementedYet;
-        },
-    }
-}
-
-fn handleConnect(c: *Client, flags: u4, body: []const u8) !void {
-    std.debug.print("Handling conenct", .{});
 }
