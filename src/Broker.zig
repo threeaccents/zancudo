@@ -22,11 +22,22 @@ pub fn handlePacket(broker: *Broker, c: *Client, header: FixedHeader, body: []co
 }
 
 fn handleConnect(broker: *Broker, c: *Client, flags: u4, body: []const u8) !void {
-    // Not used yet. Zig rejects unused parameters, so discard them until the
-    // handler needs them.
+    if (flags != 0) return error.Malformed;
+    // todo look into creating a reader to handle malformed bodies
     _ = broker;
-    _ = c;
-    _ = flags;
-    _ = body;
-    std.debug.print("Handling conenct", .{});
+
+    const protocol_name_len = std.mem.readInt(u16, body[0..2], .big);
+    const protocol_name = body[2..(protocol_name_len + 2)];
+
+    if (!std.mem.eql(u8, protocol_name, "MQTT")) return error.InvalidProtocolName;
+
+    // protocol level
+    if (body[6] != 0x04) return error.InvalidProtocolLevel;
+
+    const connect_flags = body[7];
+    _ = connect_flags;
+
+    const keep_alive = std.mem.readInt(u16, body[8..10], .big);
+    // should probably add this to client struct
+    _ = keep_alive;
 }

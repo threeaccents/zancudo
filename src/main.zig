@@ -46,6 +46,8 @@ pub fn main(init: std.process.Init) !void {
         const ready = try sys.epollWait(epfd, &events, -1);
         for (ready) |ev| {
             std.debug.print("ready: data.ptr = 0x{x}\n", .{ev.data.ptr});
+            // check if we have a new connection or handling a client.
+            // We register those 2 events with the same epoll instance.
             if (ev.data.ptr == 0) {
                 // A connection is waiting in the accept queue. More than one
                 // may be waiting, so keep accepting until the queue is empty.
