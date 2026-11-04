@@ -4,6 +4,7 @@ const linux = std.os.linux;
 const sys = @import("sys.zig");
 const Client = @import("Client.zig");
 const packet = @import("mqtt/packet.zig");
+const FixedHeader = packet.FixedHeader;
 
 // Make `zig build test` run the tests in these files too. Zig only runs tests
 // in files it reaches through imports from here.
@@ -96,13 +97,13 @@ pub fn main(init: std.process.Init) !void {
     }
 }
 
-fn handleClient(client_state: *Client) !void {
+fn handleClient(c: *Client) !void {
     while (true) {
         // One read is NOT one message: TCP is a byte stream, so a read returns
         // whatever has arrived so far, up to the free space left in in_buf.
         // Read in after the bytes already buffered, so a partial message
         // from an earlier read isn't overwritten.
-        const n = sys.read(client_state.fd, client_state.in_buf[client_state.in_len..]) catch |err| switch (err) {
+        const n = sys.read(c.fd, c.in_buf[c.in_len..]) catch |err| switch (err) {
             // Nothing more to read right now. Back to epoll_wait.
             error.WouldBlock => return,
             else => return err,
@@ -110,19 +111,33 @@ fn handleClient(client_state: *Client) !void {
         if (n == 0) return error.ClientClosed;
 
         // The new bytes extend what was already buffered.
-        client_state.in_len += n;
+        c.in_len += n;
 
-        while (try packet.FixedHeader.parse(client_state.in_buf[0..client_state.in_len])) |header| {
-            const total = header.total();
-            if (total > client_state.in_buf.len) return error.PacketTooLarge;
-            if (client_state.in_len < total) break;
+        while (try FixedHeader.parse(c.in_buf[0..c.in_len])) |header| {
+            const packet_len = header.packetLen();
+            // TODO grow the buffer to fit up to the max mqtt packet size.
+            if (packet_len > c.in_buf.len) return error.PacketTooLarge;
+            // havent received the full packet yet
+            if (c.in_len < packet_len) break;
 
-            const b = client_state.in_buf[0..total];
-            try sys.sendAll(client_state.fd, b);
+            try handlePacket(c, header, c.in_buf[header.header_len..packet_len]);
 
-            const leftover = client_state.in_buf[total..client_state.in_len];
-            std.mem.copyForwards(u8, client_state.in_buf[0..leftover.len], leftover);
-            client_state.in_len = leftover.len;
+            const leftover = c.in_buf[packet_len..c.in_len];
+            std.mem.copyForwards(u8, c.in_buf[0..leftover.len], leftover);
+            c.in_len = leftover.len;
         }
     }
+}
+
+fn handlePacket(c: *Client, header: FixedHeader, body: []const u8) !void {
+    switch (header.packet_type) {
+        .connect => try handleConnect(c, header.flags, body),
+        else => {
+            return error.PacketTypeNotImplementedYet;
+        },
+    }
+}
+
+fn handleConnect(c: *Client, flags: u4, body: []const u8) !void {
+    std.debug.print("Handling conenct", .{});
 }

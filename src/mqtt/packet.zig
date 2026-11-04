@@ -93,7 +93,7 @@ pub const FixedHeader = struct {
     }
 
     /// Size of the whole packet: the fixed header plus everything after it.
-    pub fn total(self: FixedHeader) usize {
+    pub fn packetLen(self: FixedHeader) usize {
         return self.header_len + self.remaining_len;
     }
 };
@@ -103,7 +103,7 @@ fn expectLengths(buf: []const u8, header_len: usize, remaining_len: usize) !void
     const header = (try FixedHeader.parse(buf)).?;
     try std.testing.expectEqual(header_len, header.header_len);
     try std.testing.expectEqual(remaining_len, header.remaining_len);
-    try std.testing.expectEqual(header_len + remaining_len, header.total());
+    try std.testing.expectEqual(header_len + remaining_len, header.packetLen());
 }
 
 test "FixedHeader.parse: type and flags" {
