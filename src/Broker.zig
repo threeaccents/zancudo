@@ -10,6 +10,7 @@ const Client = @import("Client.zig");
 const ConnAck = mqtt.ConnAck;
 const Connect = mqtt.Connect;
 const FixedHeader = mqtt.FixedHeader;
+const PingResp = mqtt.PingResp;
 
 const log = std.log.scoped(.broker);
 
@@ -27,10 +28,19 @@ pub fn handlePacket(self: *Broker, c: *Client, header: FixedHeader, body: []cons
 
     switch (header.packet_type) {
         .connect => try self.handleConnect(c, header.flags, body),
+        .pingreq => try self.handlePingReq(c, header.flags, body),
         else => {
             return error.PacketTypeNotImplementedYet;
         },
     }
+}
+
+fn handlePingReq(self: *Broker, c: *Client, flags: u4, body: []const u8) !void {
+    _ = self;
+
+    if (flags != 0 or body.len != 0) return error.Malformed;
+
+    try sendPingResp(c);
 }
 
 /// Decodes a CONNECT, decides whether to accept it, and answers with a
@@ -85,4 +95,9 @@ fn handleConnect(self: *Broker, c: *Client, flags: u4, body: []const u8) !void {
 fn sendConnAck(c: *Client, return_code: ConnAck.ReturnCode) !void {
     const ack: ConnAck = .{ .session_present = false, .return_code = return_code };
     try sys.sendAll(c.fd, &ack.encode());
+}
+
+fn sendPingResp(c: *Client) !void {
+    const resp: PingResp = .{};
+    try sys.sendAll(c.fd, &resp.encode());
 }
