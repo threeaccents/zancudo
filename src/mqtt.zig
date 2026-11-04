@@ -11,6 +11,7 @@ pub const Connect = @import("mqtt/Connect.zig");
 pub const FixedHeader = @import("mqtt/FixedHeader.zig");
 pub const PingResp = @import("mqtt/PingResp.zig");
 pub const Reader = @import("mqtt/Reader.zig");
+pub const Subscribe = @import("mqtt/Subscribe.zig");
 pub const Packet = packet.Packet;
 pub const PacketType = packet.PacketType;
 pub const QoS = packet.QoS;
