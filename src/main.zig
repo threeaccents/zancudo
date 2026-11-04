@@ -12,12 +12,6 @@ const Ip4Address = sys.Ip4Address;
 
 const log = std.log.scoped(.main);
 
-// Make `zig build test` run the tests in these files too. Zig only runs tests
-// in files it reaches through imports from here.
-test {
-    _ = @import("mqtt.zig");
-}
-
 pub fn main(init: std.process.Init) !void {
     const alloc = init.gpa;
 
@@ -106,4 +100,10 @@ pub fn main(init: std.process.Init) !void {
             }
         }
     }
+}
+
+// Make `zig build test` run the tests in these files too. Zig only runs tests
+// in files it reaches through imports from here.
+test {
+    _ = @import("mqtt.zig");
 }
