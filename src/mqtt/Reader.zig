@@ -44,6 +44,14 @@ pub fn readBytes(self: *Reader, n: usize) ![]const u8 {
     return r;
 }
 
+/// Reads an MQTT string or binary data field: a big-endian u16 length, then
+/// that many bytes. Both have the same format on the wire. The slice points
+/// into buf, so nothing is copied.
+pub fn readString(self: *Reader) ![]const u8 {
+    const len = try self.readU16();
+    return self.readBytes(len);
+}
+
 test "Reader: readByte" {
     const testing = std.testing;
 
@@ -80,6 +88,19 @@ test "Reader: readBytes" {
 
     try testing.expectEqualSlices(u8, "hello", try r.readBytes(5));
     try testing.expectEqual(error.EOF, r.readBytes(6));
+}
+
+test "Reader: readString" {
+    const testing = std.testing;
+
+    // "hello", then an empty string, then a length of 5 with only 2 bytes.
+    const buf = "\x00\x05hello\x00\x00\x00\x05hi";
+
+    var r = Reader.init(buf);
+
+    try testing.expectEqualStrings("hello", try r.readString());
+    try testing.expectEqualStrings("", try r.readString());
+    try testing.expectError(error.EOF, r.readString());
 }
 
 test "Reader: read mixed types in sequence" {

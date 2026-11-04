@@ -27,7 +27,7 @@ fn handleConnect(self: *Broker, c: *Client, flags: u4, body: []const u8) !void {
 
     if (flags != 0) return error.Malformed;
 
-    const r = Reader.init(body);
+    var r = Reader.init(body);
 
     const proto_name_len = r.readU16() catch return error.Malformed;
     const proto_name = r.readBytes(proto_name_len) catch return error.Malformed;
