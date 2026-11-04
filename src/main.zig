@@ -112,7 +112,8 @@ fn handleClient(client_state: *Client) !void {
         // The new bytes extend what was already buffered.
         client_state.in_len += n;
 
-        while (try packet.packetLength(client_state.in_buf[0..client_state.in_len])) |total| {
+        while (try packet.FixedHeader.parse(client_state.in_buf[0..client_state.in_len])) |header| {
+            const total = header.total();
             if (total > client_state.in_buf.len) return error.PacketTooLarge;
             if (client_state.in_len < total) break;
 
