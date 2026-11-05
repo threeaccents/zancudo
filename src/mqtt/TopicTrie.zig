@@ -66,6 +66,39 @@ pub fn subscribe(self: *TopicTrie, alloc: Allocator, filter: []const u8, client_
     try node.subscribers.append(alloc, .{ .client_id = id, .qos = qos });
 }
 
+pub fn removeSubscriber(self: *TopicTrie, alloc: Allocator, client_id: []const u8) void {
+    rmSub(alloc, &self.root, client_id);
+}
+
+fn rmSub(alloc: Allocator, node: *Node, client_id: []const u8) void {
+    // Backwards, because swapRemoveAt moves the last child into the freed
+    // slot, and going backwards that child has already been visited.
+    var index = node.children.count();
+    while (index > 0) {
+        index -= 1;
+        const child = node.children.values()[index];
+        rmSub(alloc, child, client_id);
+
+        if (child.children.count() == 0 and child.subscribers.items.len == 0) {
+            const key = node.children.keys()[index];
+            node.children.swapRemoveAt(index);
+            alloc.free(key);
+            // Empty, but its list and map can still hold allocated capacity.
+            deinitNode(child, alloc);
+            alloc.destroy(child);
+        }
+    }
+
+    for (node.subscribers.items, 0..) |sub, i| {
+        if (std.mem.eql(u8, sub.client_id, client_id)) {
+            _ = node.subscribers.swapRemove(i);
+            alloc.free(sub.client_id);
+
+            break;
+        }
+    }
+}
+
 /// "#" is only valid as the whole last level and "+" only as a whole level.
 fn validFilter(filter: []const u8) bool {
     if (filter.len == 0) return false;
@@ -126,4 +159,28 @@ test "TopicTrie: subscribe rejects invalid filters" {
     try testing.expectError(error.InvalidFilter, trie.subscribe(alloc, "a/b#", "c1", .at_most_once));
     try testing.expectError(error.InvalidFilter, trie.subscribe(alloc, "a/#/c", "c1", .at_most_once));
     try testing.expectError(error.InvalidFilter, trie.subscribe(alloc, "a+/c", "c1", .at_most_once));
+}
+
+test "TopicTrie: removeSubscriber" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+
+    var trie: TopicTrie = .{};
+    defer trie.deinit(alloc);
+
+    try trie.subscribe(alloc, "a/b", "c1", .at_most_once);
+    try trie.subscribe(alloc, "a/b", "c2", .at_most_once);
+    try trie.subscribe(alloc, "a/c", "c1", .at_most_once);
+    try trie.subscribe(alloc, "x/y", "c1", .at_most_once);
+
+    trie.removeSubscriber(alloc, "c1");
+
+    // Only a/b is left, for c2. The emptied nodes are pruned.
+    try testing.expectEqual(1, trie.root.children.count());
+    const a = trie.root.children.get("a").?;
+    try testing.expectEqual(1, a.children.count());
+
+    const b = a.children.get("b").?;
+    try testing.expectEqual(1, b.subscribers.items.len);
+    try testing.expectEqualStrings("c2", b.subscribers.items[0].client_id);
 }
