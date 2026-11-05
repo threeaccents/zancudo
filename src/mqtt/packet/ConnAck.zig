@@ -1,6 +1,8 @@
 //! CONNACK: the server's reply to CONNECT, server to client only.
 const ConnAck = @This();
 
+const Writer = @import("../Writer.zig");
+
 session_present: bool,
 
 return_code: ReturnCode,
@@ -15,11 +17,9 @@ pub const ReturnCode = enum(u8) {
     not_authorized = 0x05,
 };
 
-pub fn encode(self: ConnAck) [4]u8 {
-    return .{
-        0x20,
-        0x02,
-        @intFromBool(self.session_present),
-        @backingInt(self.return_code),
-    };
+pub fn encode(self: ConnAck, w: *Writer) !void {
+    try w.writeByte(0x20);
+    try w.writeRemainingLength(2);
+    try w.writeByte(@intFromBool(self.session_present));
+    try w.writeByte(@backingInt(self.return_code));
 }

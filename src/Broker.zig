@@ -13,6 +13,7 @@ const FixedHeader = mqtt.FixedHeader;
 const PingResp = mqtt.PingResp;
 const Subscribe = mqtt.Subscribe;
 const TopicTrie = mqtt.TopicTrie;
+const Writer = mqtt.Writer;
 
 const log = std.log.scoped(.broker);
 
@@ -137,10 +138,16 @@ pub fn removeConn(self: *Broker, conn: *Conn) void {
 /// session_present stays false until sessions are stored.
 fn sendConnAck(conn: *Conn, return_code: ConnAck.ReturnCode) !void {
     const ack: ConnAck = .{ .session_present = false, .return_code = return_code };
-    try sys.sendAll(conn.fd, &ack.encode());
+    var buf: [4]u8 = undefined;
+    var w = Writer.init(&buf);
+    try ack.encode(&w);
+    try sys.sendAll(conn.fd, w.written());
 }
 
 fn sendPingResp(conn: *Conn) !void {
     const resp: PingResp = .{};
-    try sys.sendAll(conn.fd, &resp.encode());
+    var buf: [2]u8 = undefined;
+    var w = Writer.init(&buf);
+    try resp.encode(&w);
+    try sys.sendAll(conn.fd, w.written());
 }

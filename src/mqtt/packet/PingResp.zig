@@ -1,7 +1,10 @@
 //! PINGRESP: the server's reply to PINGREQ. It has no body.
 const PingResp = @This();
 
-pub fn encode(self: PingResp) [2]u8 {
+const Writer = @import("../Writer.zig");
+
+pub fn encode(self: PingResp, w: *Writer) !void {
     _ = self;
-    return .{ 0xD0, 0x00 };
+    try w.writeByte(0xD0);
+    try w.writeRemainingLength(0);
 }
