@@ -119,9 +119,15 @@ fn handleConnect(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void 
 }
 
 pub fn removeConn(self: *Broker, conn: *Conn) void {
-    // make sure conn still presents the conn being passed in
+    if (!conn.connected) return;
+
     const id = conn.clientId();
-    if (self.conns.get(id) == conn) _ = self.conns.remove(id);
+
+    // make sure conn still represents the conn being passed in
+    if (self.conns.get(id) == conn) {
+        _ = self.conns.remove(id);
+        self.subscriptions.removeSubscriber(self.alloc, id);
+    }
 }
 
 /// session_present stays false until sessions are stored.
