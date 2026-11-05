@@ -52,9 +52,11 @@ pub fn subscribe(self: *TopicTrie, alloc: Allocator, filter: []const u8, client_
         }
     }
 
-    const sub: Subscriber = .{ .client_id = try alloc.dupe(u8, client_id), .qos = qos };
+    // Free the copy again if it can't be added to the list.
+    const id = try alloc.dupe(u8, client_id);
+    errdefer alloc.free(id);
 
-    try node.subscribers.append(alloc, sub);
+    try node.subscribers.append(alloc, .{ .client_id = id, .qos = qos });
 }
 
 /// Frees everything below `node` and everything `node` owns, but not `node`
