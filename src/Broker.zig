@@ -4,6 +4,7 @@
 const Broker = @This();
 
 const std = @import("std");
+const Allocator = std.mem.Allocator;
 const sys = @import("sys.zig");
 const mqtt = @import("mqtt.zig");
 const Conn = @import("Conn.zig");
@@ -12,12 +13,17 @@ const Connect = mqtt.Connect;
 const FixedHeader = mqtt.FixedHeader;
 const PingResp = mqtt.PingResp;
 const Subscribe = mqtt.Subscribe;
+const TopicTrie = mqtt.TopicTrie;
 
 const log = std.log.scoped(.broker);
 
 /// The number in the next ID handed to a client that connects with an empty
 /// client ID.
 next_client_id: u64 = 0,
+alloc: Allocator,
+subscriptions: TopicTrie = .{},
+// Conn that fiinished CONNECT, keyed by client_id.
+conns: std.StringHashMapUnmanaged(*Conn) = .empty,
 
 /// Handles one complete packet from `conn`. `body` is everything after the fixed
 /// header. It points into the client's input buffer, which gets reused for
@@ -39,16 +45,15 @@ pub fn handlePacket(self: *Broker, conn: *Conn, header: FixedHeader, body: []con
 }
 
 fn handleSubscribe(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void {
-    _ = self;
-    _ = conn;
-
     if (flags != 0x02) return error.Malformed;
 
     var topics: [32]Subscribe.Topic = undefined;
 
     const sub = try Subscribe.decode(body, &topics);
 
-    _ = sub;
+    for (sub.topics) |topic| {
+        try self.subscriptions.subscribe(self.alloc, topic.filter, conn.clientId(), topic.qos);
+    }
 }
 
 fn handlePingReq(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void {
@@ -111,6 +116,8 @@ fn handleConnect(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void 
     conn.clean_session = connect.clean_session;
     conn.keep_alive = connect.keep_alive;
     conn.connected = true;
+
+    try self.conns.put(self.alloc, conn.clientId(), conn);
 
     log.info("client fd = {d} connected as {s}", .{ conn.fd, conn.client_id_buf[0..conn.client_id_len] });
     try sendConnAck(conn, .accepted);

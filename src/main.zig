@@ -41,7 +41,9 @@ pub fn main(init: std.process.Init) !void {
     var events: [64]EpollEvent = undefined;
 
     // MQTT state shared by every client. Empty for now.
-    var broker: Broker = .{};
+    var broker: Broker = .{
+        .alloc = alloc,
+    };
 
     // Event loop: sleep until something is ready, handle it, repeat.
     while (true) {
