@@ -5,7 +5,7 @@
 const std = @import("std");
 const linux = std.os.linux;
 const sys = @import("sys.zig");
-const Connection = @import("Connection.zig");
+const Conn = @import("Conn.zig");
 const Broker = @import("Broker.zig");
 const EpollEvent = sys.EpollEvent;
 const Ip4Address = sys.Ip4Address;
@@ -34,7 +34,7 @@ pub fn main(init: std.process.Init) !void {
     const epfd = try sys.epollCreate();
     defer sys.close(epfd);
     // Readable listener = a connection is waiting in the accept queue.
-    // data.ptr = 0 marks the listener: no Connection ever lives at address 0.
+    // data.ptr = 0 marks the listener: no Conn ever lives at address 0.
     try sys.epollAdd(epfd, listen_fd, linux.EPOLL.IN, .{ .ptr = 0 });
     log.info("listening on {f}", .{addr});
 
@@ -54,7 +54,7 @@ pub fn main(init: std.process.Init) !void {
                 // A connection is waiting in the accept queue. More than one
                 // may be waiting, so keep accepting until the queue is empty.
                 while (true) {
-                    const client = sys.accept(listen_fd, linux.SOCK.NONBLOCK) catch |err| switch (err) {
+                    const accepted = sys.accept(listen_fd, linux.SOCK.NONBLOCK) catch |err| switch (err) {
                         // Queue is empty: we've taken every waiting connection.
                         error.WouldBlock => break,
                         else => {
@@ -62,52 +62,52 @@ pub fn main(init: std.process.Init) !void {
                             break;
                         },
                     };
-                    log.info("client fd = {d}, from {f}", .{ client.fd, client.addr });
-                    const c = alloc.create(Connection) catch |err| {
+                    log.info("client fd = {d}, from {f}", .{ accepted.fd, accepted.addr });
+                    const conn = alloc.create(Conn) catch |err| {
                         log.err("failed to allocate client state: {t}", .{err});
-                        sys.close(client.fd);
+                        sys.close(accepted.fd);
                         continue;
                     };
 
-                    c.* = .{
-                        .fd = client.fd,
-                        .addr = client.addr,
+                    conn.* = .{
+                        .fd = accepted.fd,
+                        .addr = accepted.addr,
                     };
 
                     // Watch this client for incoming data. A pointer to its
                     // state goes in `data`, so each of its events leads
-                    // straight back to its Connection.
-                    sys.epollAdd(epfd, client.fd, linux.EPOLL.IN, .{ .ptr = @intFromPtr(c) }) catch |err| {
+                    // straight back to its Conn.
+                    sys.epollAdd(epfd, accepted.fd, linux.EPOLL.IN, .{ .ptr = @intFromPtr(conn) }) catch |err| {
                         // If epoll can't watch it, we could never serve it.
                         log.err("epoll add client failed: {t}", .{err});
-                        sys.close(client.fd);
-                        alloc.destroy(c);
+                        sys.close(accepted.fd);
+                        alloc.destroy(conn);
                     };
                 }
             } else {
                 // A client is readable: it sent data, closed, or broke.
-                const c: *Connection = @ptrFromInt(ev.data.ptr);
+                const conn: *Conn = @ptrFromInt(ev.data.ptr);
 
-                c.onReadable(&broker) catch |err| {
-                    log.err("client fd = {d} error: {t}", .{ c.fd, err });
+                conn.onReadable(&broker) catch |err| {
+                    log.err("client fd = {d} error: {t}", .{ conn.fd, err });
 
-                    closeConnection(alloc, c);
+                    closeConn(alloc, conn);
                     continue;
                 };
 
-                if (c.closing) {
-                    closeConnection(alloc, c);
+                if (conn.closing) {
+                    closeConn(alloc, conn);
                 }
             }
         }
     }
 }
 
-fn closeConnection(alloc: Allocator, c: *Connection) void {
-    log.info("client fd = {d} disconnected", .{c.fd});
+fn closeConn(alloc: Allocator, conn: *Conn) void {
+    log.info("client fd = {d} disconnected", .{conn.fd});
     // Closing the fd also removes it from epoll.
-    sys.close(c.fd);
-    alloc.destroy(c);
+    sys.close(conn.fd);
+    alloc.destroy(conn);
 }
 
 // Make `zig build test` run the tests in these files too. Zig only runs tests
