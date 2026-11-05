@@ -1,6 +1,4 @@
-//! SUBSCRIBE: a client asking for messages on one or more topic filters,
-//! client to server only. Each filter comes with the highest QoS the client
-//! wants to receive on it.
+//! SUBSCRIBE: a client asking for messages on one or more topic filters.
 const Subscribe = @This();
 
 const std = @import("std");

@@ -1,6 +1,5 @@
-//! The MQTT side of the server: decides what each packet means and responds
-//! to it. State shared by all clients (client IDs, subscriptions) will live
-//! here as fields.
+//! The MQTT side of the server: handles each packet and holds the state
+//! shared by all clients.
 const Broker = @This();
 
 const std = @import("std");
@@ -17,18 +16,15 @@ const TopicTrie = mqtt.TopicTrie;
 
 const log = std.log.scoped(.broker);
 
-/// The number in the next ID handed to a client that connects with an empty
-/// client ID.
+/// Used to name clients that connect with an empty client ID.
 next_client_id: u64 = 0,
 alloc: Allocator,
 subscriptions: TopicTrie = .{},
 // Conn that fiinished CONNECT, keyed by client_id.
 conns: std.StringHashMapUnmanaged(*Conn) = .empty,
 
-/// Handles one complete packet from `conn`. `body` is everything after the fixed
-/// header. It points into the client's input buffer, which gets reused for
-/// the next packet, so it's only valid during this call: anything a handler
-/// keeps must be copied.
+/// `body` points into the connection's input buffer and is only valid
+/// during this call.
 pub fn handlePacket(self: *Broker, conn: *Conn, header: FixedHeader, body: []const u8) !void {
     // connect has to be the first msg sent
     if (!conn.connected and header.packet_type != .connect) return error.ProtocolViolation;
@@ -72,17 +68,14 @@ fn handleDisconnect(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !vo
     conn.closing = true;
 }
 
-/// Decodes a CONNECT, decides whether to accept it, and answers with a
-/// CONNACK. A refused client gets its CONNACK and is then marked closing. A
-/// malformed packet returns an error and gets no CONNACK.
+/// A refused client gets a CONNACK before it's closed. A malformed CONNECT
+/// gets none.
 fn handleConnect(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void {
-    // CONNECT is sent once, as the first packet. A second one is a protocol
-    // violation.
     if (conn.connected) return error.ProtocolViolation;
 
     const connect = Connect.decode(flags, body) catch return error.Malformed;
 
-    // Not MQTT at all, so there's no point sending an MQTT reply.
+    // Not MQTT, so don't answer in MQTT.
     if (!std.mem.eql(u8, connect.protocol_name, "MQTT")) return error.InvalidProtocolName;
 
     if (connect.protocol_level != 4) {
@@ -91,8 +84,7 @@ fn handleConnect(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void 
         return;
     }
 
-    // An empty ID asks the server to pick one, which is only allowed with a
-    // clean session. IDs longer than we have room for are refused too.
+    // An empty ID is only allowed with a clean session.
     const id = connect.client_id;
     if ((id.len == 0 and !connect.clean_session) or id.len > Conn.max_client_id_len) {
         try sendConnAck(conn, .identifier_rejected);
@@ -109,7 +101,7 @@ fn handleConnect(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void 
         self.next_client_id += 1;
         conn.client_id_len = @intCast(assigned.len);
     } else {
-        // id points into in_buf, which the next packet overwrites, so copy it.
+        // id points into in_buf, so copy it.
         @memcpy(conn.client_id_buf[0..id.len], id);
         conn.client_id_len = @intCast(id.len);
     }
@@ -123,8 +115,7 @@ fn handleConnect(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void 
     try sendConnAck(conn, .accepted);
 }
 
-/// Sends a CONNACK. Sessions aren't stored yet, so there's never one to
-/// resume and session_present is always false.
+/// session_present stays false until sessions are stored.
 fn sendConnAck(conn: *Conn, return_code: ConnAck.ReturnCode) !void {
     const ack: ConnAck = .{ .session_present = false, .return_code = return_code };
     try sys.sendAll(conn.fd, &ack.encode());

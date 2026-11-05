@@ -1,14 +1,11 @@
-//! Reads values from the front of a byte slice, checking bounds on every read.
-//! Packet bodies come from the network, so they can't be trusted to be as long
-//! as they claim: a read past the end returns error.EOF instead of crashing.
+//! Bounds-checked reads from the front of a byte slice. Packet bodies can't be
+//! trusted to be as long as they claim, so reading past the end returns
+//! error.EOF.
 const Reader = @This();
 
 const std = @import("std");
 
-/// The bytes being read. Not owned: the caller keeps them alive.
 buf: []const u8,
-
-/// Index of the next byte to read.
 pos: usize = 0,
 
 pub fn init(buf: []const u8) Reader {
@@ -44,9 +41,8 @@ pub fn readBytes(self: *Reader, n: usize) ![]const u8 {
     return r;
 }
 
-/// Reads an MQTT string or binary data field: a big-endian u16 length, then
-/// that many bytes. Both have the same format on the wire. The slice points
-/// into buf, so nothing is copied.
+/// A u16 length, then that many bytes. MQTT strings and binary data share
+/// this format.
 pub fn readString(self: *Reader) ![]const u8 {
     const len = try self.readU16();
     return self.readBytes(len);

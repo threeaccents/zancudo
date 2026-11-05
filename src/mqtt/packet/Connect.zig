@@ -7,37 +7,28 @@ const Reader = @import("../Reader.zig");
 
 protocol_name: []const u8,
 
-/// 4 for MQTT 3.1.1. Kept rather than rejected while decoding, because a
-/// wrong level is answered with CONNACK .unacceptable_protocol_version.
+/// 4 for MQTT 3.1.1. Checked by the broker, since a wrong level still gets a
+/// CONNACK.
 protocol_level: u8,
 
-/// Connect flags bit 1. True: drop any old session and start fresh.
 clean_session: bool,
 
-/// Seconds the client may stay silent before the server drops it.
-/// 0 turns the timeout off.
+/// In seconds. 0 means no timeout.
 keep_alive: u16,
 
-/// Can be empty, but only when clean_session is true.
 client_id: []const u8,
 
 /// Published for the client if it disconnects without a DISCONNECT.
-/// Present when connect flags bit 2 (will flag) is set.
 will: ?Will,
 
-/// Present when connect flags bit 7 is set.
 username: ?[]const u8,
 
-/// Present when connect flags bit 6 is set. Binary data, not UTF-8.
 password: ?[]const u8,
 
 pub const Will = struct {
     topic: []const u8,
-    /// Binary data, not UTF-8.
     message: []const u8,
-    /// Connect flags bits 4-3.
     qos: QoS,
-    /// Connect flags bit 5.
     retain: bool,
 };
 
@@ -114,8 +105,7 @@ pub fn decode(flags: u4, body: []const u8) !Connect {
 test "Connect: decode" {
     const testing = std.testing;
 
-    // Every field: flags 0xEE sets username, password, will retain, will
-    // QoS 1, will and clean session.
+    // Flags 0xEE set every field.
     const full = try decode(0, "\x00\x04MQTT\x04\xEE\x00\x3C\x00\x03abc" ++
         "\x00\x01t\x00\x03bye\x00\x01u\x00\x01p");
     try testing.expectEqualStrings("MQTT", full.protocol_name);
@@ -130,7 +120,6 @@ test "Connect: decode" {
     try testing.expectEqualStrings("u", full.username.?);
     try testing.expectEqualStrings("p", full.password.?);
 
-    // Only clean session set: no will, username or password.
     const minimal = try decode(0, "\x00\x04MQTT\x04\x02\x00\x3C\x00\x03abc");
     try testing.expectEqual(null, minimal.will);
     try testing.expectEqual(null, minimal.username);

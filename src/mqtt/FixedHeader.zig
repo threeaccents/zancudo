@@ -5,36 +5,24 @@ const FixedHeader = @This();
 const std = @import("std");
 const PacketType = @import("packet.zig").PacketType;
 
-/// High 4 bits of byte 0.
 packet_type: PacketType,
-
-/// Low 4 bits of byte 0. Only some packet types use them, PUBLISH most.
 flags: u4,
 
-/// Size of the fixed header itself: 1 type byte + 1 to 4 length bytes,
-/// so 2 to 5. The packet's body starts at this offset.
+/// 2 to 5 bytes. The body starts at this offset.
 header_len: usize,
 
-/// Number of bytes after the fixed header: the variable header plus the
-/// payload.
+/// Bytes after the fixed header.
 remaining_len: usize,
 
-/// Reads the fixed header at the start of `buf`. The packet's body doesn't
-/// need to have arrived yet, only the header.
+/// Returns null if the header hasn't fully arrived yet. The body doesn't need
+/// to have arrived.
 ///
-/// Returns null if the header hasn't fully arrived yet.
-/// Returns error.InvalidPacketType for type 0 or 15 (reserved in MQTT
-/// 3.1.1), and error.InvalidLength if the remaining length would need more
-/// than 4 bytes.
-///
-/// Remaining length encoding: each length byte holds 7 bits of the value
-/// (byte & 0x7F), and its top bit (0x80) says whether another length byte
-/// follows. Each length byte counts 128 times more than the one before it.
+/// Each remaining-length byte holds 7 bits of the value, and its top bit says
+/// another byte follows. Each byte counts 128 times more than the one before.
 pub fn parse(buf: []const u8) !?FixedHeader {
     if (buf.len == 0) return null;
 
-    // Byte 0, high 4 bits: the type. fromInt returns null for numbers that
-    // aren't in the enum (0 and 15).
+    // Types 0 and 15 aren't in the enum, so fromInt returns null for them.
     const packet_type = std.enums.fromInt(PacketType, buf[0] >> 4) orelse return error.InvalidPacketType;
 
     var multiplier_index: u8 = 0;
@@ -42,7 +30,6 @@ pub fn parse(buf: []const u8) !?FixedHeader {
 
     var total_len: usize = 2;
 
-    // The length bytes start right after the type byte.
     for (buf[1..]) |byte| {
         // MQTT allows at most 4 length bytes, so the 4th can't say "more".
         if ((byte & 0x80) != 0 and multiplier_index == 3) return error.InvalidLength;
@@ -60,29 +47,23 @@ pub fn parse(buf: []const u8) !?FixedHeader {
 
         break;
     } else {
-        // Ran out of bytes before the last length byte arrived.
         return null;
     }
 
-    // 1 type byte + 1 length byte + 1 for each extra length byte.
     const header_len: usize = 2 + multiplier_index;
 
     return .{
         .packet_type = packet_type,
-        // Byte 0, low 4 bits. The mask keeps it at 15 or less, so it fits
-        // a u4.
         .flags = @intCast(buf[0] & 0x0F),
         .header_len = header_len,
         .remaining_len = total_len - header_len,
     };
 }
 
-/// Size of the whole packet: the fixed header plus everything after it.
 pub fn packetLen(self: FixedHeader) usize {
     return self.header_len + self.remaining_len;
 }
 
-/// Test helper: parse `buf` and check its header and remaining lengths.
 fn expectLengths(buf: []const u8, header_len: usize, remaining_len: usize) !void {
     const testing = std.testing;
 
@@ -107,8 +88,6 @@ test "FixedHeader: parse type and flags" {
 }
 
 test "FixedHeader: parse one to four length bytes" {
-    // One case per number of length bytes. Only the header has arrived in
-    // each, which is all parse needs.
     try expectLengths(&.{ 0xC0, 0x00 }, 2, 0); // 1 length byte
     try expectLengths(&.{ 0x30, 0xC1, 0x02 }, 3, 321); // 2: 65 + 2 x 128
     try expectLengths(&.{ 0x30, 0xFF, 0xFF, 0x7F }, 4, 2_097_151); // 3
@@ -118,8 +97,7 @@ test "FixedHeader: parse one to four length bytes" {
 test "FixedHeader: parse incomplete or invalid header" {
     const testing = std.testing;
 
-    // Nothing buffered, only the type byte, or a length byte that says "more"
-    // before the next one has arrived: wait for more bytes.
+    // Header not complete yet.
     try testing.expectEqual(null, try parse(&[_]u8{}));
     try testing.expectEqual(null, try parse(&.{0x10}));
     try testing.expectEqual(null, try parse(&.{ 0x30, 0xC1 }));

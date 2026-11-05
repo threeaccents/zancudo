@@ -1,8 +1,5 @@
-//! MQTT 3.1.1: packet framing, packet types, and reading packet bodies.
-//!
-//! Pure functions over byte slices: no sockets or I/O, so everything here can
-//! be tested with plain byte arrays. Code outside this folder imports this
-//! file, not the files inside mqtt/.
+//! MQTT 3.1.1 packets and subscriptions. Works on plain bytes, with no
+//! sockets or I/O.
 
 const packet = @import("mqtt/packet.zig");
 

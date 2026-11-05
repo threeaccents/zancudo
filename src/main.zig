@@ -1,6 +1,4 @@
-//! Entry point: sets up the listening socket and runs the event loop. Each
-//! ready event is either a new connection on the listener or data from a
-//! client.
+//! Sets up the listening socket and runs the event loop.
 
 const std = @import("std");
 const linux = std.os.linux;
@@ -16,36 +14,29 @@ const log = std.log.scoped(.main);
 pub fn main(init: std.process.Init) !void {
     const alloc = init.gpa;
 
-    // Create a non-blocking IPv4 TCP socket. This becomes the listener.
     const listen_fd = try sys.socket(linux.AF.INET, linux.SOCK.STREAM | linux.SOCK.NONBLOCK, 0);
-    // Never runs, because the event loop never exits. That's fine: when the
-    // process dies (Ctrl-C), the kernel closes all its fds.
+    // The loop never exits. The kernel closes our fds when the process dies.
     defer sys.close(listen_fd);
 
-    // Allow restarting the server while old connections on the port are
-    // still in TIME_WAIT. Must come before bind().
+    // Lets us restart while old connections are still in TIME_WAIT.
     try sys.setsockopt(listen_fd, linux.SOL.SOCKET, linux.SO.REUSEADDR, 1);
 
     const addr: Ip4Address = .{ .ip = .{ 127, 0, 0, 1 }, .port = 1883 };
     try sys.bind(listen_fd, addr);
     try sys.listen(listen_fd, 128);
 
-    // The epoll instance: watches the listener and every client for us.
     const epfd = try sys.epollCreate();
     defer sys.close(epfd);
-    // Readable listener = a connection is waiting in the accept queue.
-    // data.ptr = 0 marks the listener: no Conn ever lives at address 0.
+    // data.ptr = 0 marks the listener, since no Conn lives at address 0.
     try sys.epollAdd(epfd, listen_fd, linux.EPOLL.IN, .{ .ptr = 0 });
     log.info("listening on {f}", .{addr});
 
     var events: [64]EpollEvent = undefined;
 
-    // MQTT state shared by every client. Empty for now.
     var broker: Broker = .{
         .alloc = alloc,
     };
 
-    // Event loop: sleep until something is ready, handle it, repeat.
     while (true) {
         const ready = try sys.epollWait(epfd, &events, -1);
         for (ready) |ev| {
@@ -53,11 +44,9 @@ pub fn main(init: std.process.Init) !void {
             // check if we have a new connection or handling a client.
             // We register those 2 events with the same epoll instance.
             if (ev.data.ptr == 0) {
-                // A connection is waiting in the accept queue. More than one
-                // may be waiting, so keep accepting until the queue is empty.
+                // More than one connection may be waiting.
                 while (true) {
                     const accepted = sys.accept(listen_fd, linux.SOCK.NONBLOCK) catch |err| switch (err) {
-                        // Queue is empty: we've taken every waiting connection.
                         error.WouldBlock => break,
                         else => {
                             log.err("accept failed: {t}", .{err});
@@ -76,18 +65,14 @@ pub fn main(init: std.process.Init) !void {
                         .addr = accepted.addr,
                     };
 
-                    // Watch this client for incoming data. A pointer to its
-                    // state goes in `data`, so each of its events leads
-                    // straight back to its Conn.
+                    // data.ptr leads each event back to its Conn.
                     sys.epollAdd(epfd, accepted.fd, linux.EPOLL.IN, .{ .ptr = @intFromPtr(conn) }) catch |err| {
-                        // If epoll can't watch it, we could never serve it.
                         log.err("epoll add client failed: {t}", .{err});
                         sys.close(accepted.fd);
                         alloc.destroy(conn);
                     };
                 }
             } else {
-                // A client is readable: it sent data, closed, or broke.
                 const conn: *Conn = @ptrFromInt(ev.data.ptr);
 
                 conn.onReadable(&broker) catch |err| {
@@ -107,13 +92,11 @@ pub fn main(init: std.process.Init) !void {
 
 fn closeConn(alloc: Allocator, conn: *Conn) void {
     log.info("client fd = {d} disconnected", .{conn.fd});
-    // Closing the fd also removes it from epoll.
     sys.close(conn.fd);
     alloc.destroy(conn);
 }
 
-// Make `zig build test` run the tests in these files too. Zig only runs tests
-// in files it reaches through imports from here.
+// Tests only run for files reachable from here.
 test {
     _ = @import("mqtt.zig");
 }
