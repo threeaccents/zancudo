@@ -13,6 +13,7 @@ pub const Packet = packet.Packet;
 pub const PacketType = packet.PacketType;
 pub const PingResp = packet.PingResp;
 pub const QoS = packet.QoS;
+pub const SubAck = packet.SubAck;
 pub const Subscribe = packet.Subscribe;
 
 test {
