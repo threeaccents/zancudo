@@ -1,8 +1,12 @@
-//! Types shared by every MQTT packet: the packet type, QoS, and the Packet
-//! union that holds any one decoded packet.
+//! MQTT packets: the types shared by every packet (the packet type, QoS, and
+//! the Packet union that holds any one decoded packet), plus one struct per
+//! packet type in packet/. Code outside this folder imports this file, not
+//! the files inside packet/.
 
-const Connect = @import("Connect.zig");
-const ConnAck = @import("ConnAck.zig");
+pub const ConnAck = @import("packet/ConnAck.zig");
+pub const Connect = @import("packet/Connect.zig");
+pub const PingResp = @import("packet/PingResp.zig");
+pub const Subscribe = @import("packet/Subscribe.zig");
 
 pub const PacketType = enum(u4) {
     connect = 1,
@@ -51,3 +55,7 @@ pub const Packet = union(PacketType) {
     pingresp: void,
     disconnect: void,
 };
+
+test {
+    @import("std").testing.refAllDecls(@This());
+}

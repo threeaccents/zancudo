@@ -2,8 +2,8 @@
 const Connect = @This();
 
 const std = @import("std");
-const QoS = @import("packet.zig").QoS;
-const Reader = @import("Reader.zig");
+const QoS = @import("../packet.zig").QoS;
+const Reader = @import("../Reader.zig");
 
 protocol_name: []const u8,
 

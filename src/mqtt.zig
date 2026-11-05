@@ -6,15 +6,15 @@
 
 const packet = @import("mqtt/packet.zig");
 
-pub const ConnAck = @import("mqtt/ConnAck.zig");
-pub const Connect = @import("mqtt/Connect.zig");
 pub const FixedHeader = @import("mqtt/FixedHeader.zig");
-pub const PingResp = @import("mqtt/PingResp.zig");
 pub const Reader = @import("mqtt/Reader.zig");
-pub const Subscribe = @import("mqtt/Subscribe.zig");
+pub const ConnAck = packet.ConnAck;
+pub const Connect = packet.Connect;
 pub const Packet = packet.Packet;
 pub const PacketType = packet.PacketType;
+pub const PingResp = packet.PingResp;
 pub const QoS = packet.QoS;
+pub const Subscribe = packet.Subscribe;
 
 test {
     @import("std").testing.refAllDecls(@This());
