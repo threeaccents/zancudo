@@ -22,6 +22,8 @@ pub fn deinit(self: *TopicTrie, alloc: Allocator) void {
 }
 
 pub fn subscribe(self: *TopicTrie, alloc: Allocator, filter: []const u8, client_id: []const u8, qos: QoS) !void {
+    if (!validFilter(filter)) return error.InvalidFilter;
+
     var levels = std.mem.splitScalar(u8, filter, '/');
 
     var node = &self.root;
@@ -57,6 +59,25 @@ pub fn subscribe(self: *TopicTrie, alloc: Allocator, filter: []const u8, client_
     errdefer alloc.free(id);
 
     try node.subscribers.append(alloc, .{ .client_id = id, .qos = qos });
+}
+
+/// Checks a topic filter against MQTT's wildcard rules: it can't be empty,
+/// "#" is only allowed as the whole last level ("a/#"), and "+" only as a
+/// whole level ("a/+/c"). Empty levels ("a//b") are allowed.
+fn validFilter(filter: []const u8) bool {
+    if (filter.len == 0) return false;
+
+    var levels = std.mem.splitScalar(u8, filter, '/');
+    while (levels.next()) |level| {
+        if (std.mem.indexOfScalar(u8, level, '#') != null) {
+            // peek is non-null when another level follows, even an empty one,
+            // so "a/#/" is rejected too.
+            if (level.len != 1 or levels.peek() != null) return false;
+        }
+        if (std.mem.indexOfScalar(u8, level, '+') != null and level.len != 1) return false;
+    }
+
+    return true;
 }
 
 /// Frees everything below `node` and everything `node` owns, but not `node`
