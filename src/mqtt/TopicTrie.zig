@@ -19,7 +19,7 @@ pub const Subscriber = struct {
 };
 
 pub fn subscribe(self: *TopicTrie, alloc: Allocator, path: []const u8, client_id: []const u8, qos: QoS) !void {
-    const levels = std.mem.splitScalar(u8, path, '/');
+    var levels = std.mem.splitScalar(u8, path, '/');
 
     var node = &self.root;
 
@@ -27,7 +27,6 @@ pub fn subscribe(self: *TopicTrie, alloc: Allocator, path: []const u8, client_id
         const gop = try node.children.getOrPut(alloc, level);
         if (!gop.found_existing) {
             gop.key_ptr.* = try alloc.dupe(u8, level);
-
             const child = try alloc.create(Node);
             child.* = .{};
             gop.value_ptr.* = child;
