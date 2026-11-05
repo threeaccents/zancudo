@@ -6,6 +6,7 @@ const packet = @import("mqtt/packet.zig");
 pub const FixedHeader = @import("mqtt/FixedHeader.zig");
 pub const Reader = @import("mqtt/Reader.zig");
 pub const TopicTrie = @import("mqtt/TopicTrie.zig");
+pub const Writer = @import("mqtt/Writer.zig");
 pub const ConnAck = packet.ConnAck;
 pub const Connect = packet.Connect;
 pub const Packet = packet.Packet;
