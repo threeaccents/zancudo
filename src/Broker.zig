@@ -109,6 +109,10 @@ fn handleConnect(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void 
     conn.keep_alive = connect.keep_alive;
     conn.connected = true;
 
+    if (conn.clean_session) {
+        self.subscriptions.removeSubscriber(self.alloc, conn.clientId());
+    }
+
     if (try self.conns.fetchPut(self.alloc, conn.clientId(), conn)) |old| {
         old.value.closing = true;
         sys.shutdown(old.value.fd);
