@@ -16,5 +16,10 @@ pub const ReturnCode = enum(u8) {
 };
 
 pub fn encode(self: ConnAck) [4]u8 {
-    return .{ 0x20, 0x02, @intFromBool(self.session_present), @backingInt(self.return_code) };
+    return .{
+        0x20,
+        0x02,
+        @intFromBool(self.session_present),
+        @backingInt(self.return_code),
+    };
 }
