@@ -40,16 +40,6 @@ pub fn handlePacket(self: *Broker, conn: *Conn, header: FixedHeader, body: []con
     }
 }
 
-/// Forget a connection that's about to be destroyed. Its conns key points
-/// into the Conn itself.
-pub fn removeConn(self: *Broker, conn: *Conn) void {
-    if (!conn.connected) return;
-
-    // After a takeover the ID belongs to a newer connection, so leave it.
-    const id = conn.clientId();
-    if (self.conns.get(id) == conn) _ = self.conns.remove(id);
-}
-
 fn handleSubscribe(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void {
     if (flags != 0x02) return error.Malformed;
 

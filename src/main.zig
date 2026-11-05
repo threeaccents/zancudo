@@ -78,21 +78,20 @@ pub fn main(init: std.process.Init) !void {
                 conn.onReadable(&broker) catch |err| {
                     log.err("client fd = {d} error: {t}", .{ conn.fd, err });
 
-                    closeConn(alloc, &broker, conn);
+                    closeConn(alloc, conn);
                     continue;
                 };
 
                 if (conn.closing) {
-                    closeConn(alloc, &broker, conn);
+                    closeConn(alloc, conn);
                 }
             }
         }
     }
 }
 
-fn closeConn(alloc: Allocator, broker: *Broker, conn: *Conn) void {
+fn closeConn(alloc: Allocator, conn: *Conn) void {
     log.info("client fd = {d} disconnected", .{conn.fd});
-    broker.removeConn(conn);
     sys.close(conn.fd);
     alloc.destroy(conn);
 }
