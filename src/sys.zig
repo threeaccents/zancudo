@@ -185,6 +185,13 @@ pub fn close(fd: fd_t) void {
     _ = linux.close(fd);
 }
 
+/// End the connection but keep the fd open. epoll then reports it readable
+/// with EOF, so it gets closed through the normal path.
+pub fn shutdown(fd: fd_t) void {
+    // The only realistic failure is ENOTCONN, when the peer is already gone.
+    _ = linux.shutdown(fd, linux.SHUT.RDWR);
+}
+
 fn unexpected(err: linux.E) error{Unexpected} {
     log.err("unexpected errno: {t}", .{err});
     return error.Unexpected;
