@@ -36,21 +36,19 @@ pub fn subscribe(self: *TopicTrie, alloc: Allocator, filter: []const u8, client_
     var node = &self.root;
 
     while (levels.next()) |level| {
-        const gop = try node.children.getOrPut(alloc, level);
-        if (!gop.found_existing) {
-            // The key is still the borrowed level, so swap in our own copy.
-            errdefer _ = node.children.swapRemove(level);
-
+        const child = node.children.get(level) orelse blk: {
             const key = try alloc.dupe(u8, level);
             errdefer alloc.free(key);
 
-            const child = try alloc.create(Node);
+            const val = try alloc.create(Node);
+            errdefer alloc.destroy(val);
+            val.* = .{};
 
-            gop.key_ptr.* = key;
-            child.* = .{};
-            gop.value_ptr.* = child;
-        }
-        node = gop.value_ptr.*;
+            try node.children.put(alloc, key, val);
+            break :blk val;
+        };
+
+        node = child;
     }
 
     // just update the exisitng sub instead of adding duplicates
