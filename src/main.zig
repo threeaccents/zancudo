@@ -5,7 +5,7 @@
 const std = @import("std");
 const linux = std.os.linux;
 const sys = @import("sys.zig");
-const Client = @import("Client.zig");
+const Connection = @import("Connection.zig");
 const Broker = @import("Broker.zig");
 const EpollEvent = sys.EpollEvent;
 const Ip4Address = sys.Ip4Address;
@@ -34,7 +34,7 @@ pub fn main(init: std.process.Init) !void {
     const epfd = try sys.epollCreate();
     defer sys.close(epfd);
     // Readable listener = a connection is waiting in the accept queue.
-    // data.ptr = 0 marks the listener: no Client ever lives at address 0.
+    // data.ptr = 0 marks the listener: no Connection ever lives at address 0.
     try sys.epollAdd(epfd, listen_fd, linux.EPOLL.IN, .{ .ptr = 0 });
     log.info("listening on {f}", .{addr});
 
@@ -63,7 +63,7 @@ pub fn main(init: std.process.Init) !void {
                         },
                     };
                     log.info("client fd = {d}, from {f}", .{ client.fd, client.addr });
-                    const c = alloc.create(Client) catch |err| {
+                    const c = alloc.create(Connection) catch |err| {
                         log.err("failed to allocate client state: {t}", .{err});
                         sys.close(client.fd);
                         continue;
@@ -76,7 +76,7 @@ pub fn main(init: std.process.Init) !void {
 
                     // Watch this client for incoming data. A pointer to its
                     // state goes in `data`, so each of its events leads
-                    // straight back to its Client.
+                    // straight back to its Connection.
                     sys.epollAdd(epfd, client.fd, linux.EPOLL.IN, .{ .ptr = @intFromPtr(c) }) catch |err| {
                         // If epoll can't watch it, we could never serve it.
                         log.err("epoll add client failed: {t}", .{err});
@@ -86,24 +86,24 @@ pub fn main(init: std.process.Init) !void {
                 }
             } else {
                 // A client is readable: it sent data, closed, or broke.
-                const c: *Client = @ptrFromInt(ev.data.ptr);
+                const c: *Connection = @ptrFromInt(ev.data.ptr);
 
                 c.onReadable(&broker) catch |err| {
                     log.err("client fd = {d} error: {t}", .{ c.fd, err });
 
-                    closeClient(alloc, c);
+                    closeConnection(alloc, c);
                     continue;
                 };
 
                 if (c.closing) {
-                    closeClient(alloc, c);
+                    closeConnection(alloc, c);
                 }
             }
         }
     }
 }
 
-fn closeClient(alloc: Allocator, c: *Client) void {
+fn closeConnection(alloc: Allocator, c: *Connection) void {
     log.info("client fd = {d} disconnected", .{c.fd});
     // Closing the fd also removes it from epoll.
     sys.close(c.fd);

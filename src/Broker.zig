@@ -6,7 +6,7 @@ const Broker = @This();
 const std = @import("std");
 const sys = @import("sys.zig");
 const mqtt = @import("mqtt.zig");
-const Client = @import("Client.zig");
+const Connection = @import("Connection.zig");
 const ConnAck = mqtt.ConnAck;
 const Connect = mqtt.Connect;
 const FixedHeader = mqtt.FixedHeader;
@@ -23,7 +23,7 @@ next_client_id: u64 = 0,
 /// header. It points into the client's input buffer, which gets reused for
 /// the next packet, so it's only valid during this call: anything a handler
 /// keeps must be copied.
-pub fn handlePacket(self: *Broker, c: *Client, header: FixedHeader, body: []const u8) !void {
+pub fn handlePacket(self: *Broker, c: *Connection, header: FixedHeader, body: []const u8) !void {
     // connect has to be the first msg sent
     if (!c.connected and header.packet_type != .connect) return error.ProtocolViolation;
 
@@ -38,7 +38,7 @@ pub fn handlePacket(self: *Broker, c: *Client, header: FixedHeader, body: []cons
     }
 }
 
-fn handleSubscribe(self: *Broker, c: *Client, flags: u4, body: []const u8) !void {
+fn handleSubscribe(self: *Broker, c: *Connection, flags: u4, body: []const u8) !void {
     _ = self;
     _ = c;
 
@@ -51,7 +51,7 @@ fn handleSubscribe(self: *Broker, c: *Client, flags: u4, body: []const u8) !void
     _ = sub;
 }
 
-fn handlePingReq(self: *Broker, c: *Client, flags: u4, body: []const u8) !void {
+fn handlePingReq(self: *Broker, c: *Connection, flags: u4, body: []const u8) !void {
     _ = self;
 
     if (flags != 0 or body.len != 0) return error.Malformed;
@@ -59,7 +59,7 @@ fn handlePingReq(self: *Broker, c: *Client, flags: u4, body: []const u8) !void {
     try sendPingResp(c);
 }
 
-fn handleDisconnect(self: *Broker, c: *Client, flags: u4, body: []const u8) !void {
+fn handleDisconnect(self: *Broker, c: *Connection, flags: u4, body: []const u8) !void {
     _ = self;
 
     if (flags != 0 or body.len != 0) return error.Malformed;
@@ -70,7 +70,7 @@ fn handleDisconnect(self: *Broker, c: *Client, flags: u4, body: []const u8) !voi
 /// Decodes a CONNECT, decides whether to accept it, and answers with a
 /// CONNACK. A refused client gets its CONNACK and is then marked closing. A
 /// malformed packet returns an error and gets no CONNACK.
-fn handleConnect(self: *Broker, c: *Client, flags: u4, body: []const u8) !void {
+fn handleConnect(self: *Broker, c: *Connection, flags: u4, body: []const u8) !void {
     // CONNECT is sent once, as the first packet. A second one is a protocol
     // violation.
     if (c.connected) return error.ProtocolViolation;
@@ -89,7 +89,7 @@ fn handleConnect(self: *Broker, c: *Client, flags: u4, body: []const u8) !void {
     // An empty ID asks the server to pick one, which is only allowed with a
     // clean session. IDs longer than we have room for are refused too.
     const id = connect.client_id;
-    if ((id.len == 0 and !connect.clean_session) or id.len > Client.max_client_id_len) {
+    if ((id.len == 0 and !connect.clean_session) or id.len > Connection.max_client_id_len) {
         try sendConnAck(c, .identifier_rejected);
         c.closing = true;
         return;
@@ -118,12 +118,12 @@ fn handleConnect(self: *Broker, c: *Client, flags: u4, body: []const u8) !void {
 
 /// Sends a CONNACK. Sessions aren't stored yet, so there's never one to
 /// resume and session_present is always false.
-fn sendConnAck(c: *Client, return_code: ConnAck.ReturnCode) !void {
+fn sendConnAck(c: *Connection, return_code: ConnAck.ReturnCode) !void {
     const ack: ConnAck = .{ .session_present = false, .return_code = return_code };
     try sys.sendAll(c.fd, &ack.encode());
 }
 
-fn sendPingResp(c: *Client) !void {
+fn sendPingResp(c: *Connection) !void {
     const resp: PingResp = .{};
     try sys.sendAll(c.fd, &resp.encode());
 }

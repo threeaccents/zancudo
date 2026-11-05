@@ -1,6 +1,6 @@
 //! One client connection: its socket, its address, and the bytes it has sent
 //! that haven't been handled yet.
-const Client = @This();
+const Connection = @This();
 
 const std = @import("std");
 const sys = @import("sys.zig");
@@ -57,7 +57,7 @@ keep_alive: u16 = 0,
 /// Returns normally once there's nothing more to read right now, so the event
 /// loop can go back to epoll_wait, or once `closing` is set, so the event loop
 /// can close the connection. Returns an error only when something went wrong.
-pub fn onReadable(self: *Client, broker: *Broker) !void {
+pub fn onReadable(self: *Connection, broker: *Broker) !void {
     while (true) {
         // One read is NOT one message: TCP is a byte stream, so a read returns
         // whatever has arrived so far, up to the free space left in in_buf.
