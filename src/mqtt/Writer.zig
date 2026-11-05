@@ -44,6 +44,31 @@ pub fn writeString(self: *Writer, str: []const u8) !void {
     try self.writeBytes(str);
 }
 
+/// 7 bits per byte, lowest first. The top bit says another byte follows.
+pub fn writeRemainingLength(self: *Writer, len: usize) !void {
+    // The most that 4 length bytes can hold.
+    if (len > 268_435_455) return error.RemainingLengthTooLong;
+
+    // Encoded first so nothing is written if it won't all fit.
+    var encoded: [4]u8 = undefined;
+    var count: usize = 0;
+    var rest = len;
+
+    // Runs at least once, since a length of 0 is still one byte.
+    while (true) {
+        var byte: u8 = @intCast(rest % 128);
+        rest /= 128;
+        if (rest > 0) byte |= 0x80;
+
+        encoded[count] = byte;
+        count += 1;
+
+        if (rest == 0) break;
+    }
+
+    try self.writeBytes(encoded[0..count]);
+}
+
 pub fn written(self: *Writer) []const u8 {
     return self.buf[0..self.pos];
 }
@@ -107,6 +132,21 @@ test writeString {
 
     try std.testing.expectEqualSlices(u8, &expected, w.written());
     try std.testing.expectError(error.NoSpaceLeft, w.writeString("1"));
+}
+
+test writeRemainingLength {
+    var buf: [7]u8 = undefined;
+
+    const expected: [7]u8 = .{ 0x00, 0xC1, 0x02, 0xFF, 0xFF, 0xFF, 0x7F };
+
+    var w = Writer.init(&buf);
+
+    try w.writeRemainingLength(0);
+    try w.writeRemainingLength(321);
+    try w.writeRemainingLength(268_435_455);
+
+    try std.testing.expectEqualSlices(u8, &expected, w.written());
+    try std.testing.expectError(error.RemainingLengthTooLong, w.writeRemainingLength(268_435_456));
 }
 
 test "all writing methods" {
