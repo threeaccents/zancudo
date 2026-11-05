@@ -97,8 +97,8 @@ pub fn onReadable(self: *Conn, broker: *Broker) !void {
     }
 }
 
-pub fn clientId(self: *Conn) ?[]const u8 {
-    if (self.client_id_buf.len == 0) return null;
+pub fn clientId(self: *Conn) []const u8 {
+    if (self.client_id_len == 0) return .{};
 
     return self.client_id_buf[0..self.client_id_len];
 }
