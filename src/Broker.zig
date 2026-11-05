@@ -115,6 +115,12 @@ fn handleConnect(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void 
     try sendConnAck(conn, .accepted);
 }
 
+pub fn removeConn(self: *Broker, conn: *Conn) void {
+    // make sure conn still presents the conn being passed in
+    const id = conn.clientId();
+    if (self.conns.get(id) == conn) _ = self.conns.remove(id);
+}
+
 /// session_present stays false until sessions are stored.
 fn sendConnAck(conn: *Conn, return_code: ConnAck.ReturnCode) !void {
     const ack: ConnAck = .{ .session_present = false, .return_code = return_code };
