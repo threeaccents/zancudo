@@ -49,24 +49,24 @@ pub fn writeRemainingLength(self: *Writer, len: usize) !void {
     // The most that 4 length bytes can hold.
     if (len > 268_435_455) return error.RemainingLengthTooLong;
 
-    // Encoded first so nothing is written if it won't all fit.
     var encoded: [4]u8 = undefined;
-    var count: usize = 0;
     var rest = len;
 
     // Runs at least once, since a length of 0 is still one byte.
+    var index: usize = 0;
     while (true) {
         var byte: u8 = @intCast(rest % 128);
         rest /= 128;
-        if (rest > 0) byte |= 0x80;
+        // |= does ORing. Keeps a bit if either of them is 1
+        if (rest > 0) byte |= 0b10000000;
 
-        encoded[count] = byte;
-        count += 1;
+        encoded[index] = byte;
+        index += 1;
 
         if (rest == 0) break;
     }
 
-    try self.writeBytes(encoded[0..count]);
+    try self.writeBytes(encoded[0..index]);
 }
 
 pub fn written(self: *Writer) []const u8 {
