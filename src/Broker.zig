@@ -14,7 +14,6 @@ const PingResp = mqtt.PingResp;
 const SubAck = mqtt.SubAck;
 const Subscribe = mqtt.Subscribe;
 const TopicTrie = mqtt.TopicTrie;
-const Writer = mqtt.Writer;
 
 const log = std.log.scoped(.broker);
 
@@ -65,7 +64,8 @@ fn handleSubscribe(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !voi
         try filter_codes.appendBounded(code);
     }
 
-    try sendSubAck(conn, sub.packet_id, filter_codes.items);
+    const ack: SubAck = .{ .packet_id = sub.packet_id, .filter_codes = filter_codes.items };
+    try conn.send(ack);
 }
 
 fn handlePingReq(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void {
@@ -73,7 +73,8 @@ fn handlePingReq(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void 
 
     if (flags != 0 or body.len != 0) return error.Malformed;
 
-    try sendPingResp(conn);
+    const resp: PingResp = .{};
+    try conn.send(resp);
 }
 
 fn handleDisconnect(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void {
@@ -95,7 +96,8 @@ fn handleConnect(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void 
     if (!std.mem.eql(u8, connect.protocol_name, "MQTT")) return error.InvalidProtocolName;
 
     if (connect.protocol_level != 4) {
-        try sendConnAck(conn, .unacceptable_protocol_version);
+        const ack: ConnAck = .{ .session_present = false, .return_code = .unacceptable_protocol_version };
+        try conn.send(ack);
         conn.closing = true;
         return;
     }
@@ -103,7 +105,8 @@ fn handleConnect(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void 
     // An empty ID is only allowed with a clean session.
     const id = connect.client_id;
     if ((id.len == 0 and !connect.clean_session) or id.len > Conn.max_client_id_len) {
-        try sendConnAck(conn, .identifier_rejected);
+        const ack: ConnAck = .{ .session_present = false, .return_code = .identifier_rejected };
+        try conn.send(ack);
         conn.closing = true;
         return;
     }
@@ -135,7 +138,10 @@ fn handleConnect(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void 
     }
 
     log.info("client fd = {d} connected as {s}", .{ conn.fd, conn.client_id_buf[0..conn.client_id_len] });
-    try sendConnAck(conn, .accepted);
+
+    const ack: ConnAck = .{ .session_present = false, .return_code = .accepted };
+
+    try conn.send(ack);
 }
 
 pub fn removeConn(self: *Broker, conn: *Conn) void {
@@ -148,29 +154,4 @@ pub fn removeConn(self: *Broker, conn: *Conn) void {
         _ = self.conns.remove(id);
         self.subscriptions.removeSubscriber(self.alloc, id);
     }
-}
-
-/// session_present stays false until sessions are stored.
-fn sendConnAck(conn: *Conn, return_code: ConnAck.ReturnCode) !void {
-    const ack: ConnAck = .{ .session_present = false, .return_code = return_code };
-    var buf: [4]u8 = undefined;
-    var w = Writer.init(&buf);
-    try ack.encode(&w);
-    try sys.sendAll(conn.fd, w.written());
-}
-
-fn sendPingResp(conn: *Conn) !void {
-    const resp: PingResp = .{};
-    var buf: [2]u8 = undefined;
-    var w = Writer.init(&buf);
-    try resp.encode(&w);
-    try sys.sendAll(conn.fd, w.written());
-}
-
-fn sendSubAck(conn: *Conn, packet_id: u16, filter_codes: []SubAck.ReturnCode) !void {
-    const ack: SubAck = .{ .packet_id = packet_id, .filter_codes = filter_codes };
-    var buf: [4096]u8 = undefined;
-    var w = Writer.init(&buf);
-    try ack.encode(&w);
-    try sys.sendAll(conn.fd, w.written());
 }
