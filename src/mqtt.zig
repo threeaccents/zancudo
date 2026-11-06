@@ -12,6 +12,7 @@ pub const Connect = packet.Connect;
 pub const Packet = packet.Packet;
 pub const PacketType = packet.PacketType;
 pub const PingResp = packet.PingResp;
+pub const Publish = packet.Publish;
 pub const QoS = packet.QoS;
 pub const SubAck = packet.SubAck;
 pub const Subscribe = packet.Subscribe;
