@@ -1,3 +1,5 @@
+//! PUBLISH: an application message, sent by clients to the broker and by
+//! the broker to subscribers.
 const Publish = @This();
 
 const std = @import("std");
@@ -41,3 +43,29 @@ pub fn decode(flags: u4, body: []const u8) !Publish {
     };
 }
 
+test "Publish: decode" {
+    const testing = std.testing;
+
+    // QoS 0 has no packet ID, so the payload starts right after the topic.
+    const p0 = try decode(0b0000, "\x00\x03a/b21C");
+    try testing.expectEqual(.at_most_once, p0.qos);
+    try testing.expectEqual(null, p0.packet_id);
+    try testing.expectEqualStrings("a/b", p0.topic);
+    try testing.expectEqualStrings("21C", p0.payload);
+
+    // QoS 1 with RETAIN: packet ID 10 sits between the topic and the payload.
+    const p1 = try decode(0b0011, "\x00\x03a/b\x00\x0a21C");
+    try testing.expectEqual(.at_least_once, p1.qos);
+    try testing.expect(p1.retain);
+    try testing.expectEqual(10, p1.packet_id);
+    try testing.expectEqualStrings("21C", p1.payload);
+}
+
+test "Publish: decode malformed" {
+    const testing = std.testing;
+
+    // QoS 3 doesn't exist.
+    try testing.expectError(error.Malformed, decode(0b0110, "\x00\x03a/b\x00\x0a"));
+    // DUP is only for QoS 1 and 2.
+    try testing.expectError(error.Malformed, decode(0b1000, "\x00\x03a/b"));
+}
