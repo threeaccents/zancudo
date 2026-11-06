@@ -38,12 +38,12 @@ pub const Packet = union(PacketType) {
     pubrec: void, // TODO
     pubrel: void, // TODO
     pubcomp: void, // TODO
-    subscribe: void, // TODO
+    subscribe: Subscribe,
     suback: SubAck,
     unsubscribe: void, // TODO
     unsuback: void, // TODO
     pingreq: void,
-    pingresp: void,
+    pingresp: PingResp,
     disconnect: void,
 };
 
