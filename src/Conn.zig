@@ -42,6 +42,9 @@ clean_session: bool = true,
 /// In seconds. 0 means no timeout.
 keep_alive: u16 = 0,
 
+/// Flag if conn is listening to linux.EPOLL.OUT events
+epoll_out_on: bool = false,
+
 /// Reads what has arrived and hands each complete packet to the broker. A
 /// partial packet stays buffered until the rest arrives.
 pub fn onReadable(self: *Conn, broker: *Broker) !void {
@@ -89,10 +92,17 @@ pub fn send(self: *Conn, packet: anytype) !void {
 
     self.out_len += w.written().len;
 
+    try self.flush();
+}
+
+pub fn flush(self: *Conn) !void {
     while (self.out_len > 0) {
         const n = sys.send(self.fd, self.out_buf[0..self.out_len]) catch |err| switch (err) {
             error.WouldBlock => {
-                try sys.epollMod(self.epfd, self.fd, linux.EPOLL.IN | linux.EPOLL.OUT, .{ .ptr = @intFromPtr(self) });
+                if (!self.epoll_out_on) {
+                    try sys.epollMod(self.epfd, self.fd, linux.EPOLL.IN | linux.EPOLL.OUT, .{ .ptr = @intFromPtr(self) });
+                    self.epoll_out_on = true;
+                }
                 break;
             },
             else => return err,
@@ -101,5 +111,10 @@ pub fn send(self: *Conn, packet: anytype) !void {
         @memmove(self.out_buf[0..(self.out_len - n)], self.out_buf[n..self.out_len]);
 
         self.out_len -= n;
+    }
+
+    if (self.out_len == 0 and self.epoll_out_on) {
+        self.epoll_out_on = false;
+        try sys.epollMod(self.epfd, self.fd, linux.EPOLL.IN, .{ .ptr = @intFromPtr(self) });
     }
 }
