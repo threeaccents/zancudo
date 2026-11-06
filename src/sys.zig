@@ -167,6 +167,19 @@ pub fn epollAdd(epfd: fd_t, fd: fd_t, events: u32, data: EpollData) EpollAddErro
     };
 }
 
+pub const EpollModError = error{ NotRegistered, Unexpected };
+
+/// Replaces both the events and `data`, so pass `data` again.
+pub fn epollMod(epfd: fd_t, fd: fd_t, events: u32, data: EpollData) EpollModError!void {
+    var ev: EpollEvent = .{ .events = events, .data = data };
+    const rc = linux.epoll_ctl(epfd, linux.EPOLL.CTL_MOD, fd, &ev);
+    return switch (linux.errno(rc)) {
+        .SUCCESS => {},
+        .NOENT => error.NotRegistered,
+        else => |err| unexpected(err),
+    };
+}
+
 /// Waits until a watched fd is ready or `timeout_ms` passes (-1 waits
 /// forever), and returns the filled part of `events`.
 pub fn epollWait(epfd: fd_t, events: []EpollEvent, timeout_ms: i32) error{Unexpected}![]EpollEvent {
