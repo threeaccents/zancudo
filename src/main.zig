@@ -40,7 +40,7 @@ pub fn main(init: std.process.Init) !void {
     while (true) {
         const ready = try sys.epollWait(epfd, &events, -1);
         for (ready) |ev| {
-            log.debug("ready: data.ptr = 0x{x}", .{ev.data.ptr});
+            log.debug("ready: data.ptr (aka conn) = 0x{x}", .{ev.data.ptr});
             // check if we have a new connection or handling a client.
             // We register those 2 events with the same epoll instance.
             if (ev.data.ptr == 0) {
