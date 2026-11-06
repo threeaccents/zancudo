@@ -62,6 +62,7 @@ pub fn main(init: std.process.Init) !void {
 
                     conn.* = .{
                         .fd = accepted.fd,
+                        .epfd = epfd,
                         .addr = accepted.addr,
                     };
 
@@ -75,15 +76,25 @@ pub fn main(init: std.process.Init) !void {
             } else {
                 const conn: *Conn = @ptrFromInt(ev.data.ptr);
 
-                conn.onReadable(&broker) catch |err| {
-                    log.err("client fd = {d} error: {t}", .{ conn.fd, err });
+                if (ev.events & linux.EPOLL.OUT != 0) {
+                    conn.flush() catch |err| {
+                        log.err("client fd = {d} error: {t}", .{ conn.fd, err });
+                        closeConn(alloc, conn, &broker);
+                        continue;
+                    };
+                }
 
-                    closeConn(alloc, conn, &broker);
-                    continue;
-                };
+                if (ev.events & linux.EPOLL.IN != 0) {
+                    conn.onReadable(&broker) catch |err| {
+                        log.err("client fd = {d} error: {t}", .{ conn.fd, err });
 
-                if (conn.closing) {
-                    closeConn(alloc, conn, &broker);
+                        closeConn(alloc, conn, &broker);
+                        continue;
+                    };
+
+                    if (conn.closing) {
+                        closeConn(alloc, conn, &broker);
+                    }
                 }
             }
         }
