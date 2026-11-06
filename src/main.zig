@@ -84,17 +84,16 @@ pub fn main(init: std.process.Init) !void {
                     };
                 }
 
-                if (ev.events & linux.EPOLL.IN != 0) {
-                    conn.onReadable(&broker) catch |err| {
-                        log.err("client fd = {d} error: {t}", .{ conn.fd, err });
+                // No IN check: this also handles HUP and ERR, which read reports as EOF or an error.
+                conn.onReadable(&broker) catch |err| {
+                    log.err("client fd = {d} error: {t}", .{ conn.fd, err });
 
-                        closeConn(alloc, conn, &broker);
-                        continue;
-                    };
+                    closeConn(alloc, conn, &broker);
+                    continue;
+                };
 
-                    if (conn.closing) {
-                        closeConn(alloc, conn, &broker);
-                    }
+                if (conn.closing) {
+                    closeConn(alloc, conn, &broker);
                 }
             }
         }
