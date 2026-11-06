@@ -4,18 +4,27 @@ const Conn = @This();
 
 const std = @import("std");
 const sys = @import("sys.zig");
+const mqtt = @import("mqtt.zig");
+const linux = std.os.linux;
 const Broker = @import("Broker.zig");
-const FixedHeader = @import("mqtt.zig").FixedHeader;
+const FixedHeader = mqtt.FixedHeader;
 const Ip4Address = sys.Ip4Address;
+const Writer = mqtt.Writer;
 
 /// MQTT 3.1.1 only requires servers to accept client IDs up to 23 bytes.
 pub const max_client_id_len = 23;
 
 fd: sys.fd_t,
-in_len: usize = 0,
+
+// epoll fd
+epfd: sys.fd_t,
 
 /// Only the first in_len bytes are valid.
 in_buf: [4096]u8 = undefined,
+in_len: usize = 0,
+
+out_buf: [16_000]u8 = undefined,
+out_len: usize = 0,
 
 addr: Ip4Address,
 
@@ -72,4 +81,25 @@ pub fn onReadable(self: *Conn, broker: *Broker) !void {
 
 pub fn clientId(self: *Conn) []const u8 {
     return self.client_id_buf[0..self.client_id_len];
+}
+
+pub fn send(self: *Conn, packet: anytype) !void {
+    var w = Writer.init(self.out_buf[self.out_len..]);
+    try packet.encode(&w);
+
+    self.out_len += w.written().len;
+
+    while (self.out_len > 0) {
+        const n = sys.send(self.fd, self.out_buf[0..self.out_len]) catch |err| switch (err) {
+            error.WouldBlock => {
+                try sys.epollMod(self.epfd, self.fd, linux.EPOLL.IN | linux.EPOLL.OUT, .{ .ptr = @intFromPtr(self) });
+                break;
+            },
+            else => return err,
+        };
+
+        @memmove(self.out_buf[0..(self.out_len - n)], self.out_buf[n..self.out_len]);
+
+        self.out_len -= n;
+    }
 }
