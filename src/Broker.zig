@@ -11,6 +11,7 @@ const ConnAck = mqtt.ConnAck;
 const Connect = mqtt.Connect;
 const FixedHeader = mqtt.FixedHeader;
 const PingResp = mqtt.PingResp;
+const SubAck = mqtt.SubAck;
 const Subscribe = mqtt.Subscribe;
 const TopicTrie = mqtt.TopicTrie;
 const Writer = mqtt.Writer;
@@ -51,6 +52,20 @@ fn handleSubscribe(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !voi
     for (sub.topics) |topic| {
         try self.subscriptions.subscribe(self.alloc, topic.filter, conn.clientId(), topic.qos);
     }
+
+    var buf: [32]SubAck.ReturnCode = undefined;
+    var filter_codes: std.ArrayList(SubAck.ReturnCode) = .initBuffer(&buf);
+    for (sub.topics) |topic| {
+        const code: SubAck.ReturnCode = switch (topic.qos) {
+            .at_least_once => .granted_qos1,
+            .at_most_once => .granted_qos0,
+            .exactly_once => .granted_qos2,
+        };
+
+        try filter_codes.appendBounded(code);
+    }
+
+    try sendSubAck(conn, sub.packet_id, filter_codes.items);
 }
 
 fn handlePingReq(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void {
@@ -149,5 +164,13 @@ fn sendPingResp(conn: *Conn) !void {
     var buf: [2]u8 = undefined;
     var w = Writer.init(&buf);
     try resp.encode(&w);
+    try sys.sendAll(conn.fd, w.written());
+}
+
+fn sendSubAck(conn: *Conn, packet_id: u16, filter_codes: []SubAck.ReturnCode) !void {
+    const ack: SubAck = .{ .packet_id = packet_id, .filter_codes = filter_codes };
+    var buf: [4096]u8 = undefined;
+    var w = Writer.init(&buf);
+    try ack.encode(&w);
     try sys.sendAll(conn.fd, w.written());
 }
