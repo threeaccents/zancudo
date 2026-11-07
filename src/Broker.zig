@@ -11,6 +11,7 @@ const ConnAck = mqtt.ConnAck;
 const Connect = mqtt.Connect;
 const FixedHeader = mqtt.FixedHeader;
 const PingResp = mqtt.PingResp;
+const Publish = mqtt.Publish;
 const SubAck = mqtt.SubAck;
 const Subscribe = mqtt.Subscribe;
 const TopicTrie = mqtt.TopicTrie;
@@ -35,9 +36,30 @@ pub fn handlePacket(self: *Broker, conn: *Conn, header: FixedHeader, body: []con
         .disconnect => try self.handleDisconnect(conn, header.flags, body),
         .pingreq => try self.handlePingReq(conn, header.flags, body),
         .subscribe => try self.handleSubscribe(conn, header.flags, body),
+        .publish => try self.handlePublish(conn, header.flags, body),
         else => {
             return error.PacketTypeNotImplementedYet;
         },
+    }
+}
+
+fn handlePublish(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void {
+    _ = conn;
+
+    const p = Publish.decode(flags, body) catch return error.Malformed;
+
+    var buf: [16 * 1024]TopicTrie.Subscriber = undefined;
+    const subscribers = try self.subscriptions.match(p.topic, &buf);
+
+    for (subscribers) |s| {
+        const sub_conn = self.conns.get(s.client_id) orelse continue;
+        const pub_packet: Publish = .{ .dup = p.dup, .payload = p.payload, .qos = p.qos, .retain = p.retain, .topic = p.topic };
+
+        sub_conn.send(pub_packet) catch |err| {
+            log.err("Failed to send publish to subscriber. client id: {s}. error {t}", .{ sub_conn.clientId(), err });
+
+            continue;
+        };
     }
 }
 
