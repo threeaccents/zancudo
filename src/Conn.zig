@@ -26,6 +26,8 @@ in_len: usize = 0,
 out_buf: [16_000]u8 = undefined,
 out_len: usize = 0,
 
+next_packet_id: u16 = 0,
+
 addr: Ip4Address,
 
 /// Set once CONNECT has been handled.
