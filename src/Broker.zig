@@ -7,6 +7,7 @@ const Allocator = std.mem.Allocator;
 const sys = @import("sys.zig");
 const mqtt = @import("mqtt.zig");
 const Conn = @import("Conn.zig");
+const Session = @import("Session.zig");
 const ConnAck = mqtt.ConnAck;
 const Connect = mqtt.Connect;
 const FixedHeader = mqtt.FixedHeader;
@@ -25,6 +26,8 @@ alloc: Allocator,
 subscriptions: TopicTrie = .{},
 // Conn that fiinished CONNECT, keyed by client_id.
 conns: std.StringHashMapUnmanaged(*Conn) = .empty,
+
+sessions: std.StringHashMapUnmanaged(*Session) = .empty,
 
 /// `body` points into the connection's input buffer and is only valid
 /// during this call.
@@ -53,14 +56,20 @@ fn handlePublish(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void 
     const subscribers = try self.subscriptions.match(p.topic, &buf);
 
     for (subscribers) |s| {
-        const sub_conn = self.conns.get(s.client_id) orelse continue;
+        const sesh = self.sessions.get(s.client_id) orelse continue;
         const pub_packet: Publish = .{ .dup = p.dup, .payload = p.payload, .qos = p.qos, .retain = p.retain, .topic = p.topic };
 
-        sub_conn.send(pub_packet) catch |err| {
-            log.err("Failed to send publish to subscriber. client id: {s}. error {t}", .{ sub_conn.clientId(), err });
+        if (sesh.conn) |sesh_conn| {
+            sesh_conn.send(pub_packet) catch |err| {
+                log.err("Failed to send publish to subscriber. client id: {s}. error {t}", .{ sesh_conn.clientId(), err });
 
-            continue;
-        };
+                continue;
+            };
+        } else {
+            const owned_pub = try self.alloc.create(Publish);
+            owned_pub.* = pub_packet;
+            sesh.appendQueuedMsg(owned_pub) catch continue;
+        }
     }
 }
 
@@ -151,18 +160,43 @@ fn handleConnect(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void 
     conn.keep_alive = connect.keep_alive;
     conn.connected = true;
 
-    if (conn.clean_session) {
-        self.subscriptions.removeSubscriber(self.alloc, conn.clientId());
-    }
+    const client_id = conn.clientId();
 
-    if (try self.conns.fetchPut(self.alloc, conn.clientId(), conn)) |old| {
+    if (try self.conns.fetchPut(self.alloc, client_id, conn)) |old| {
         old.value.closing = true;
         sys.shutdown(old.value.fd);
     }
 
-    log.info("client fd = {d} connected as {s}", .{ conn.fd, conn.client_id_buf[0..conn.client_id_len] });
+    if (conn.clean_session) {
+        _ = self.sessions.remove(client_id);
+        self.subscriptions.removeSubscriber(self.alloc, client_id);
+    }
 
-    const ack: ConnAck = .{ .session_present = false, .return_code = .accepted };
+    var session_present = false;
+
+    const gop = try self.sessions.getOrPut(self.alloc, client_id);
+    if (!gop.found_existing) {
+        errdefer _ = self.sessions.remove(client_id);
+
+        const key = try self.alloc.dupe(u8, client_id);
+        errdefer self.alloc.free(key);
+
+        const sesh = try self.alloc.create(Session);
+        sesh.* = Session.init(self.alloc, conn, connect.clean_session);
+
+        gop.key_ptr.* = key;
+        gop.value_ptr.* = sesh;
+    } else {
+        log.debug("Found existing session. Client id: {s}", .{client_id});
+        session_present = true;
+        gop.value_ptr.*.conn = conn;
+
+        try gop.value_ptr.*.drainQueuedMsgs();
+    }
+
+    log.info("client fd = {d} connected as {s}", .{ conn.fd, client_id });
+
+    const ack: ConnAck = .{ .session_present = session_present, .return_code = .accepted };
 
     try conn.send(ack);
 }
@@ -175,6 +209,17 @@ pub fn removeConn(self: *Broker, conn: *Conn) void {
     // make sure conn still represents the conn being passed in
     if (self.conns.get(id) == conn) {
         _ = self.conns.remove(id);
-        self.subscriptions.removeSubscriber(self.alloc, id);
+
+        if (self.sessions.get(id)) |sesh| {
+            if (sesh.clean_session) {
+                self.subscriptions.removeSubscriber(self.alloc, id);
+                if (self.sessions.fetchRemove(id)) |s| {
+                    self.alloc.free(s.key);
+                    self.alloc.destroy(s.value);
+                }
+            } else {
+                sesh.conn = null;
+            }
+        }
     }
 }
