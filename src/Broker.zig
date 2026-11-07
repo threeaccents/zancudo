@@ -11,6 +11,7 @@ const ConnAck = mqtt.ConnAck;
 const Connect = mqtt.Connect;
 const FixedHeader = mqtt.FixedHeader;
 const PingResp = mqtt.PingResp;
+const PubAck = mqtt.PubAck;
 const Publish = mqtt.Publish;
 const SubAck = mqtt.SubAck;
 const Subscribe = mqtt.Subscribe;

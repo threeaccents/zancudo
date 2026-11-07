@@ -3,6 +3,7 @@
 pub const ConnAck = @import("packet/ConnAck.zig");
 pub const Connect = @import("packet/Connect.zig");
 pub const PingResp = @import("packet/PingResp.zig");
+pub const PubAck = @import("packet/PubAck.zig");
 pub const Publish = @import("packet/Publish.zig");
 pub const SubAck = @import("packet/SubAck.zig");
 pub const Subscribe = @import("packet/Subscribe.zig");
