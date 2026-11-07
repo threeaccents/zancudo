@@ -66,6 +66,39 @@ pub fn subscribe(self: *TopicTrie, alloc: Allocator, filter: []const u8, client_
     try node.subscribers.append(alloc, .{ .client_id = id, .qos = qos });
 }
 
+/// Collects the subscribers of every filter matching `topic` into `buf`. A
+/// client with several matching filters is in the result once per filter.
+/// `topic` must not contain wildcards.
+pub fn match(self: *const TopicTrie, topic: []const u8, buf: []Subscriber) ![]Subscriber {
+    var found: std.ArrayList(Subscriber) = .initBuffer(buf);
+    var levels = std.mem.splitScalar(u8, topic, '/');
+
+    // "+" and "#" as the first level don't match topics starting with "$".
+    if (std.mem.startsWith(u8, topic, "$")) {
+        const first = levels.next().?;
+        if (self.root.children.get(first)) |child| try matchNode(child, levels, &found);
+    } else {
+        try matchNode(&self.root, levels, &found);
+    }
+
+    // dedup later
+    return found.items;
+}
+
+fn matchNode(node: *const Node, levels: std.mem.SplitIterator(u8, .scalar), found: *std.ArrayList(Subscriber)) !void {
+    var rest = levels;
+    const level = rest.next() orelse {
+        try found.appendSliceBounded(node.subscribers.items);
+        // "a/#" also matches "a".
+        if (node.children.get("#")) |hash| try found.appendSliceBounded(hash.subscribers.items);
+        return;
+    };
+
+    if (node.children.get("#")) |hash| try found.appendSliceBounded(hash.subscribers.items);
+    if (node.children.get("+")) |plus| try matchNode(plus, rest, found);
+    if (node.children.get(level)) |child| try matchNode(child, rest, found);
+}
+
 pub fn removeSubscriber(self: *TopicTrie, alloc: Allocator, client_id: []const u8) void {
     rmSub(alloc, &self.root, client_id);
 }
@@ -159,6 +192,35 @@ test "TopicTrie: subscribe rejects invalid filters" {
     try testing.expectError(error.InvalidFilter, trie.subscribe(alloc, "a/b#", "c1", .at_most_once));
     try testing.expectError(error.InvalidFilter, trie.subscribe(alloc, "a/#/c", "c1", .at_most_once));
     try testing.expectError(error.InvalidFilter, trie.subscribe(alloc, "a+/c", "c1", .at_most_once));
+}
+
+test "TopicTrie: match" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+
+    var trie: TopicTrie = .{};
+    defer trie.deinit(alloc);
+
+    try trie.subscribe(alloc, "a/b", "exact", .at_most_once);
+    try trie.subscribe(alloc, "a/+", "plus", .at_most_once);
+    try trie.subscribe(alloc, "a/#", "hash", .at_most_once);
+    try trie.subscribe(alloc, "#", "all", .at_most_once);
+    try trie.subscribe(alloc, "$SYS/#", "sys", .at_most_once);
+
+    var buf: [8]Subscriber = undefined;
+
+    try testing.expectEqual(4, (try trie.match("a/b", &buf)).len);
+    // "+" is one level, "#" any number.
+    try testing.expectEqual(2, (try trie.match("a/b/c", &buf)).len);
+    try testing.expectEqual(1, (try trie.match("$SYS/uptime", &buf)).len);
+
+    const parent = try trie.match("a", &buf);
+    try testing.expectEqual(2, parent.len);
+    try testing.expectEqualStrings("all", parent[0].client_id);
+    try testing.expectEqualStrings("hash", parent[1].client_id);
+
+    var small: [1]Subscriber = undefined;
+    try testing.expectError(error.OutOfMemory, trie.match("a/b", &small));
 }
 
 test "TopicTrie: removeSubscriber" {
