@@ -1,4 +1,4 @@
-//! The MQTT side of the server: handles each packet and holds the state
+//! the MQTT server handles each packet and holds the state
 //! shared by all clients.
 const Broker = @This();
 

@@ -1,5 +1,4 @@
-//! One client connection: its socket and the bytes read from it that haven't
-//! been handled yet.
+//! A client connection
 const Conn = @This();
 
 const std = @import("std");

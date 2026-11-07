@@ -1,6 +1,4 @@
-//! Bounds-checked reads from the front of a byte slice. Packet bodies can't be
-//! trusted to be as long as they claim, so reading past the end returns
-//! error.EOF.
+//! Reader
 const Reader = @This();
 
 const std = @import("std");
