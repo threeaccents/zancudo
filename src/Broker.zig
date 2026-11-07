@@ -66,6 +66,8 @@ fn handlePublish(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void 
                 continue;
             };
         } else {
+            // zig doesnt deep copy so i gotta indivndually copy the slice
+            // could look into creating 1 alloc buffer for the whole publish
             const owned_pub = try self.alloc.create(Publish);
             owned_pub.* = pub_packet;
             sesh.appendQueuedMsg(owned_pub) catch continue;
