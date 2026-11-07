@@ -5,8 +5,9 @@ const Publish = @This();
 const std = @import("std");
 const Reader = @import("../Reader.zig");
 const QoS = @import("../packet.zig").QoS;
+const Writer = @import("../Writer.zig");
 
-packet_id: ?u16,
+packet_id: ?u16 = null,
 qos: QoS,
 dup: bool,
 retain: bool,
@@ -44,6 +45,20 @@ pub fn decode(flags: u4, body: []const u8) !Publish {
         .topic = topic,
         .payload = payload,
     };
+}
+
+pub fn encode(self: Publish, w: *Writer) !void {
+    const first_byte: u8 = @as(u8, 3) << 4 | @as(u8, @intFromBool(self.dup)) << 3 | @as(u8, @backingInt(self.qos)) << 1 | @as(u8, @intFromBool(self.retain));
+
+    const packet_id_len: usize = if (self.packet_id != null) 2 else 0;
+
+    const len = (self.topic.len + 2) + packet_id_len + self.payload.len;
+
+    try w.writeByte(first_byte);
+    try w.writeRemainingLength(len);
+    try w.writeString(self.topic);
+    if (self.packet_id) |id| try w.writeU16(id);
+    try w.writeBytes(self.payload);
 }
 
 test "Publish: decode" {

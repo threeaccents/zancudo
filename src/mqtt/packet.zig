@@ -34,7 +34,7 @@ pub const QoS = enum(u2) {
 pub const Packet = union(PacketType) {
     connect: Connect,
     connack: ConnAck,
-    publish: void, // TODO
+    publish: Publish,
     puback: void, // TODO
     pubrec: void, // TODO
     pubrel: void, // TODO
