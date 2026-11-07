@@ -24,10 +24,13 @@ pub fn decode(flags: u4, body: []const u8) !Publish {
     if (dup and qos == .at_most_once) return error.Malformed;
 
     const topic = try r.readString();
+    if (topic.len == 0) return error.Malformed;
 
     var packet_id: ?u16 = null;
     if (qos != .at_most_once) {
-        packet_id = try r.readU16();
+        const id = try r.readU16();
+        if (id == 0) return error.Malformed;
+        packet_id = id;
     }
 
     // the remaing bytes is the payload
@@ -68,4 +71,8 @@ test "Publish: decode malformed" {
     try testing.expectError(error.Malformed, decode(0b0110, "\x00\x03a/b\x00\x0a"));
     // DUP is only for QoS 1 and 2.
     try testing.expectError(error.Malformed, decode(0b1000, "\x00\x03a/b"));
+    // Empty topic.
+    try testing.expectError(error.Malformed, decode(0b0000, "\x00\x0021C"));
+    // QoS 1 with packet ID 0.
+    try testing.expectError(error.Malformed, decode(0b0010, "\x00\x03a/b\x00\x0021C"));
 }
