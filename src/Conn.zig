@@ -2,6 +2,7 @@
 const Conn = @This();
 
 const std = @import("std");
+const Io = std.Io;
 const sys = @import("sys.zig");
 const mqtt = @import("mqtt.zig");
 const linux = std.os.linux;
@@ -118,4 +119,22 @@ pub fn flush(self: *Conn) !void {
         self.epoll_out_on = false;
         try sys.epollMod(self.epfd, self.fd, linux.EPOLL.IN, .{ .ptr = @intFromPtr(self) });
     }
+}
+
+pub fn setClientId(self: *Conn, io: Io, client_id: []const u8) void {
+    if (client_id.len == 0) {
+        randomId(io, self.client_id_buf[0..10]);
+        self.client_id_len = 10;
+        return;
+    }
+
+    @memcpy(self.client_id_buf[0..client_id.len], client_id);
+    self.client_id_len = @intCast(client_id.len);
+}
+
+fn randomId(io: Io, buf: []u8) void {
+    const alphabet = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+    io.random(buf);
+    for (buf) |*c| c.* = alphabet[c.* % alphabet.len];
 }
