@@ -147,7 +147,7 @@ fn handleConnEv(self: *Server, ev: EpollEvent) void {
             break;
         }
 
-        conn.helpMeComeUpWtFuncName(packet_len);
+        conn.consume(packet_len);
     }
 
     if (conn.closing) {

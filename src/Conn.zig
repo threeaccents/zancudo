@@ -72,7 +72,7 @@ pub fn clientId(self: *Conn) []const u8 {
     return self.client_id_buf[0..self.client_id_len];
 }
 
-pub fn helpMeComeUpWtFuncName(self: *Conn, packet_len: usize) void {
+pub fn consume(self: *Conn, packet_len: usize) void {
     const leftover = self.in_buf[packet_len..self.in_len];
     std.mem.copyForwards(u8, self.in_buf[0..leftover.len], leftover);
     self.in_len = leftover.len;
