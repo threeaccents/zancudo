@@ -24,8 +24,8 @@ broker: *Broker,
 const log = std.log.scoped(.server);
 
 pub fn init(
-    io: Io,
     alloc: Allocator,
+    broker: *Broker,
     ip: [4]u8,
     port: u16,
 ) !Server {
@@ -44,14 +44,12 @@ pub fn init(
 
     log.info("listening on {f}", .{addr});
 
-    var broker: Broker = .init(io, alloc);
-
     return .{
         .fd = socket_fd,
         .ip = ip,
         .port = port,
         .epfd = epfd,
-        .broker = &broker,
+        .broker = broker,
         .alloc = alloc,
     };
 }

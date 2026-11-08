@@ -13,7 +13,9 @@ pub fn main(init: std.process.Init) !void {
     const alloc = init.gpa;
     const io = init.io;
 
-    var server: Server = try .init(io, alloc, .{ 127, 0, 0, 1 }, 42069);
+    var broker: Broker = .init(io, alloc);
+
+    var server: Server = try .init(alloc, &broker, .{ 127, 0, 0, 1 }, 42069);
     defer server.deinit();
 
     try server.listen();
