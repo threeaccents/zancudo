@@ -117,7 +117,7 @@ fn handleConnEv(self: *Server, ev: EpollEvent) void {
 
     // reads all the data coming in and sets it to its internal buffer
     conn.read() catch |err| {
-        log.err("failed to read conn[{s}]. error: {t}", .{ conn.clientId(), err });
+        log.err("failed to read conn[{d}]. error: {t}", .{ conn.fd, err });
         self.closeConn(conn);
         return;
     };
