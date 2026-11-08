@@ -6,7 +6,6 @@ const Io = std.Io;
 const sys = @import("sys.zig");
 const mqtt = @import("mqtt.zig");
 const linux = std.os.linux;
-const Broker = @import("Broker.zig");
 const Ip4Address = sys.Ip4Address;
 const Writer = mqtt.Writer;
 

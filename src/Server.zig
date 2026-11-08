@@ -1,7 +1,6 @@
 const Server = @This();
 
 const std = @import("std");
-const Io = std.Io;
 const Allocator = std.mem.Allocator;
 const linux = std.os.linux;
 const sys = @import("sys.zig");

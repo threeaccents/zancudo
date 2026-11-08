@@ -1,13 +1,8 @@
 //! Sets up the listening socket and runs the event loop.
 
 const std = @import("std");
-const sys = @import("sys.zig");
-const Conn = @import("Conn.zig");
 const Broker = @import("Broker.zig");
 const Server = @import("Server.zig");
-const Allocator = std.mem.Allocator;
-
-const log = std.log.scoped(.main);
 
 pub fn main(init: std.process.Init) !void {
     const alloc = init.gpa;
