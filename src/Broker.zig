@@ -84,8 +84,6 @@ fn handleConnect(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void 
     conn.keep_alive = connect.keep_alive;
     conn.connected = true;
 
-    if (conn.clean_session) self.cleanSession(client_id);
-
     try self.appendConn(conn);
 
     const sess = try self.getOrSetSession(conn, connect.clean_session);
@@ -197,7 +195,7 @@ fn removeSession(self: *Broker, client_id: []const u8) void {
 
 fn cleanSession(self: *Broker, client_id: []const u8) void {
     self.removeSession(client_id);
-    self.removeSubscribers(client_id);
+    self.subscriptions.removeSubscriber(self.alloc, client_id);
 }
 
 fn getOrSetSession(self: *Broker, conn: *Conn, clean_session: bool) !*Session {
@@ -213,10 +211,12 @@ fn getOrSetSession(self: *Broker, conn: *Conn, clean_session: bool) !*Session {
         errdefer self.alloc.destroy(sess);
         sess.* = Session.init(self.alloc, conn, clean_session);
 
+        try self.sessions.put(self.alloc, key, sess);
+
         return sess;
     }
 
-    if (session.?.clean_session) {
+    if (session.?.clean_session or clean_session) {
         self.cleanSession(client_id);
 
         const key = try self.alloc.dupe(u8, client_id);
@@ -226,6 +226,8 @@ fn getOrSetSession(self: *Broker, conn: *Conn, clean_session: bool) !*Session {
         errdefer self.alloc.destroy(sess);
         sess.* = Session.init(self.alloc, conn, clean_session);
 
+        try self.sessions.put(self.alloc, key, sess);
+
         return sess;
     }
 
@@ -233,10 +235,6 @@ fn getOrSetSession(self: *Broker, conn: *Conn, clean_session: bool) !*Session {
     session.?.conn = conn;
 
     return session.?;
-}
-
-fn removeSubscribers(self: *Broker, client_id: []const u8) void {
-    self.subscriptions.removeSubscriber(self.alloc, client_id);
 }
 
 fn appendConn(self: *Broker, conn: *Conn) !void {
