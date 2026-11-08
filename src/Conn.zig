@@ -54,7 +54,8 @@ pub fn read(self: *Conn) !void {
             error.WouldBlock => return,
             else => return err,
         };
-        // The client closed its side.
+
+        if (n == 0 and (self.in_len == self.in_buf.len)) return error.InBufferFull;
         if (n == 0) {
             self.closing = true;
             return;

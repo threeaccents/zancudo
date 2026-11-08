@@ -116,10 +116,16 @@ fn handleConnEv(self: *Server, ev: EpollEvent) void {
     }
 
     // reads all the data coming in and sets it to its internal buffer
-    conn.read() catch |err| {
-        log.err("failed to read conn[{d}]. error: {t}", .{ conn.fd, err });
-        self.closeConn(conn);
-        return;
+    conn.read() catch |err| switch (err) {
+        error.InBufferFull =>
+        // look into allocating to a bigger buffer
+        log.debug("buffer full", .{}),
+
+        else => {
+            log.err("failed to read conn[{d}]. error: {t}", .{ conn.fd, err });
+            self.closeConn(conn);
+            return;
+        },
     };
 
     while (true) {
