@@ -125,7 +125,8 @@ fn handleConnEv(self: *Server, ev: EpollEvent) void {
     while (true) {
         const header = FixedHeader.parse(conn.data()) catch |err| {
             log.err("failed to parse fixed header conn[{s}]. error: {t}", .{ conn.clientId(), err });
-            break;
+            self.closeConn(conn);
+            return;
         } orelse break;
 
         const packet_len = header.packetLen();
@@ -138,13 +139,13 @@ fn handleConnEv(self: *Server, ev: EpollEvent) void {
         self.broker.handlePacket(conn, header, conn.in_buf[header.header_len..packet_len]) catch |err| {
             log.err("failed to handle packet {t}", .{err});
             self.closeConn(conn);
-            break;
+            return;
         };
 
         // Anything after a packet that ends the connection is ignored.
         if (conn.closing) {
             self.closeConn(conn);
-            break;
+            return;
         }
 
         conn.consume(packet_len);
