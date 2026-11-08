@@ -13,6 +13,7 @@ const log = std.log.scoped(.main);
 
 pub fn main(init: std.process.Init) !void {
     const alloc = init.gpa;
+    const io = init.io;
 
     const listen_fd = try sys.socket(linux.AF.INET, linux.SOCK.STREAM | linux.SOCK.NONBLOCK, 0);
     // The loop never exits. The kernel closes our fds when the process dies.
@@ -33,9 +34,7 @@ pub fn main(init: std.process.Init) !void {
 
     var events: [64]EpollEvent = undefined;
 
-    var broker: Broker = .{
-        .alloc = alloc,
-    };
+    var broker: Broker = .init(io, alloc);
 
     while (true) {
         const ready = try sys.epollWait(epfd, &events, -1);
@@ -103,7 +102,7 @@ pub fn main(init: std.process.Init) !void {
 fn closeConn(alloc: Allocator, conn: *Conn, broker: *Broker) void {
     log.info("client fd = {d} disconnected", .{conn.fd});
     sys.close(conn.fd);
-    broker.removeConn(conn);
+    broker.closeConn(conn);
     alloc.destroy(conn);
 }
 

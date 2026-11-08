@@ -3,6 +3,7 @@
 const Broker = @This();
 
 const std = @import("std");
+const Io = std.Io;
 const Allocator = std.mem.Allocator;
 const sys = @import("sys.zig");
 const mqtt = @import("mqtt.zig");
@@ -29,6 +30,12 @@ conns: std.StringHashMapUnmanaged(*Conn) = .empty,
 
 sessions: std.StringHashMapUnmanaged(*Session) = .empty,
 
+io: Io,
+
+pub fn init(io: Io, alloc: Allocator) Broker {
+    return .{ .io = io, .alloc = alloc };
+}
+
 /// `body` points into the connection's input buffer and is only valid
 /// during this call.
 pub fn handlePacket(self: *Broker, conn: *Conn, header: FixedHeader, body: []const u8) !void {
@@ -47,6 +54,51 @@ pub fn handlePacket(self: *Broker, conn: *Conn, header: FixedHeader, body: []con
     }
 }
 
+/// A refused client gets a CONNACK before it's closed. A malformed CONNECT
+/// gets none.
+// TODO: keep connect.will once PUBLISH exists.
+// TODO: check connect.username and connect.password once there's auth.
+fn handleConnect(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void {
+    if (conn.connected) return error.ProtocolViolation;
+
+    const connect = Connect.decode(flags, body) catch |err| switch (err) {
+        error.UnacceptableProtocolVersion => {
+            const ack: ConnAck = .{ .session_present = false, .return_code = .unacceptable_protocol_version };
+            try conn.send(ack);
+            conn.closing = true;
+            return;
+        },
+        error.IdentifierRejected => {
+            const ack: ConnAck = .{ .session_present = false, .return_code = .identifier_rejected };
+            try conn.send(ack);
+            conn.closing = true;
+            return;
+        },
+        else => return error.Malformed,
+    };
+
+    conn.setClientId(self.io, connect.client_id);
+    const client_id = conn.clientId();
+
+    conn.clean_session = connect.clean_session;
+    conn.keep_alive = connect.keep_alive;
+    conn.connected = true;
+
+    if (conn.clean_session) self.cleanSession(client_id);
+
+    try self.setConn(conn);
+
+    const sess = try self.getOrSetSession(conn, connect.clean_session);
+
+    log.info("client fd = {d} connected as {s}", .{ conn.fd, client_id });
+
+    const ack: ConnAck = .{ .session_present = sess.existing_session, .return_code = .accepted };
+
+    try conn.send(ack);
+
+    try sess.drainQueuedMsgs();
+}
+
 fn handlePublish(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void {
     _ = conn;
 
@@ -57,7 +109,15 @@ fn handlePublish(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void 
 
     for (subscribers) |s| {
         const sesh = self.sessions.get(s.client_id) orelse continue;
-        const pub_packet: Publish = .{ .dup = p.dup, .payload = p.payload, .qos = p.qos, .retain = p.retain, .topic = p.topic };
+
+        const pub_packet: Publish = .{
+            .dup = p.dup,
+            .payload = p.payload,
+            .qos = p.qos,
+            .retain = p.retain,
+            .topic = p.topic,
+            .packet_id = if (p.qos != .at_most_once) sesh.packetId() else null,
+        };
 
         if (sesh.conn) |sesh_conn| {
             sesh_conn.send(pub_packet) catch |err| {
@@ -66,11 +126,7 @@ fn handlePublish(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void 
                 continue;
             };
         } else {
-            // zig doesnt deep copy so i gotta indivndually copy the slice
-            // could look into creating 1 alloc buffer for the whole publish
-            const owned_pub = try self.alloc.create(Publish);
-            owned_pub.* = pub_packet;
-            sesh.appendQueuedMsg(owned_pub) catch continue;
+            sesh.appendQueuedMsg(pub_packet) catch continue;
         }
     }
 }
@@ -119,91 +175,7 @@ fn handleDisconnect(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !vo
     conn.closing = true;
 }
 
-/// A refused client gets a CONNACK before it's closed. A malformed CONNECT
-/// gets none.
-fn handleConnect(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void {
-    if (conn.connected) return error.ProtocolViolation;
-
-    const connect = Connect.decode(flags, body) catch return error.Malformed;
-
-    // Not MQTT, so don't answer in MQTT.
-    if (!std.mem.eql(u8, connect.protocol_name, "MQTT")) return error.InvalidProtocolName;
-
-    if (connect.protocol_level != 4) {
-        const ack: ConnAck = .{ .session_present = false, .return_code = .unacceptable_protocol_version };
-        try conn.send(ack);
-        conn.closing = true;
-        return;
-    }
-
-    // An empty ID is only allowed with a clean session.
-    const id = connect.client_id;
-    if ((id.len == 0 and !connect.clean_session) or id.len > Conn.max_client_id_len) {
-        const ack: ConnAck = .{ .session_present = false, .return_code = .identifier_rejected };
-        try conn.send(ack);
-        conn.closing = true;
-        return;
-    }
-
-    // TODO: keep connect.will once PUBLISH exists.
-    // TODO: check connect.username and connect.password once there's auth.
-
-    if (id.len == 0) {
-        // create an id for them
-        const assigned = std.fmt.bufPrint(&conn.client_id_buf, "z-{d}", .{self.next_client_id}) catch unreachable;
-        self.next_client_id += 1;
-        conn.client_id_len = @intCast(assigned.len);
-    } else {
-        // id points into in_buf, so copy it.
-        @memcpy(conn.client_id_buf[0..id.len], id);
-        conn.client_id_len = @intCast(id.len);
-    }
-    conn.clean_session = connect.clean_session;
-    conn.keep_alive = connect.keep_alive;
-    conn.connected = true;
-
-    const client_id = conn.clientId();
-
-    if (try self.conns.fetchPut(self.alloc, client_id, conn)) |old| {
-        old.value.closing = true;
-        sys.shutdown(old.value.fd);
-    }
-
-    if (conn.clean_session) {
-        _ = self.sessions.remove(client_id);
-        self.subscriptions.removeSubscriber(self.alloc, client_id);
-    }
-
-    var session_present = false;
-
-    const gop = try self.sessions.getOrPut(self.alloc, client_id);
-    if (!gop.found_existing) {
-        errdefer _ = self.sessions.remove(client_id);
-
-        const key = try self.alloc.dupe(u8, client_id);
-        errdefer self.alloc.free(key);
-
-        const sesh = try self.alloc.create(Session);
-        sesh.* = Session.init(self.alloc, conn, connect.clean_session);
-
-        gop.key_ptr.* = key;
-        gop.value_ptr.* = sesh;
-    } else {
-        log.debug("Found existing session. Client id: {s}", .{client_id});
-        session_present = true;
-        gop.value_ptr.*.conn = conn;
-
-        try gop.value_ptr.*.drainQueuedMsgs();
-    }
-
-    log.info("client fd = {d} connected as {s}", .{ conn.fd, client_id });
-
-    const ack: ConnAck = .{ .session_present = session_present, .return_code = .accepted };
-
-    try conn.send(ack);
-}
-
-pub fn removeConn(self: *Broker, conn: *Conn) void {
+pub fn closeConn(self: *Broker, conn: *Conn) void {
     if (!conn.connected) return;
 
     const id = conn.clientId();
@@ -214,14 +186,62 @@ pub fn removeConn(self: *Broker, conn: *Conn) void {
 
         if (self.sessions.get(id)) |sesh| {
             if (sesh.clean_session) {
-                self.subscriptions.removeSubscriber(self.alloc, id);
-                if (self.sessions.fetchRemove(id)) |s| {
-                    self.alloc.free(s.key);
-                    self.alloc.destroy(s.value);
-                }
+                self.cleanSession(id);
             } else {
                 sesh.conn = null;
             }
         }
+    }
+}
+
+fn removeSession(self: *Broker, client_id: []const u8) void {
+    if (self.sessions.fetchRemove(client_id)) |s| {
+        self.alloc.free(s.key);
+        self.alloc.destroy(s.value);
+    }
+}
+
+fn cleanSession(self: *Broker, client_id: []const u8) void {
+    self.removeSession(client_id);
+    self.removeSubscribers(client_id);
+}
+
+fn getOrSetSession(self: *Broker, conn: *Conn, clean_session: bool) !*Session {
+    const client_id = conn.clientId();
+
+    const gop = try self.sessions.getOrPut(self.alloc, client_id);
+    if (!gop.found_existing or gop.value_ptr.*.clean_session) {
+        self.cleanSession(client_id);
+        errdefer _ = self.sessions.remove(client_id);
+
+        const key = try self.alloc.dupe(u8, client_id);
+        errdefer self.alloc.free(key);
+
+        const sesh = try self.alloc.create(Session);
+        sesh.* = Session.init(self.alloc, conn, clean_session);
+
+        gop.key_ptr.* = key;
+        gop.value_ptr.* = sesh;
+
+        return sesh;
+    }
+
+    log.debug("Found existing session. Client id: {s}", .{client_id});
+    gop.value_ptr.*.conn = conn;
+    gop.value_ptr.*.existing_session = true;
+
+    return gop.value_ptr.*;
+}
+
+fn removeSubscribers(self: *Broker, client_id: []const u8) void {
+    self.subscriptions.removeSubscriber(self.alloc, client_id);
+}
+
+fn setConn(self: *Broker, conn: *Conn) !void {
+    // we might have an old conn still around for this client.
+    // So we set the new conn and the old conn we close.
+    if (try self.conns.fetchPut(self.alloc, conn.clientId(), conn)) |old| {
+        old.value.closing = true;
+        sys.shutdown(old.value.fd);
     }
 }
