@@ -58,7 +58,7 @@ pub fn deinit(self: *Server) void {
     sys.close(self.epfd);
 }
 
-pub fn listen(self: *Server) !void {
+pub fn serve(self: *Server) !void {
     var events: [128]EpollEvent = undefined;
 
     while (true) {

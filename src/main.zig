@@ -13,7 +13,7 @@ pub fn main(init: std.process.Init) !void {
     var server: Server = try .init(alloc, &broker, .{ 127, 0, 0, 1 }, 42069);
     defer server.deinit();
 
-    try server.listen();
+    try server.serve();
 }
 
 // Tests only run for files reachable from here.
