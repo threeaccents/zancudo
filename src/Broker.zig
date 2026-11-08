@@ -94,7 +94,7 @@ fn handleConnect(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void 
 
     const ack: ConnAck = .{ .session_present = sess.existing_session, .return_code = .accepted };
 
-    try conn.send(ack);
+    try sess.sendMsg(ack);
 
     try sess.drainQueuedMsgs();
 }
@@ -108,7 +108,7 @@ fn handlePublish(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void 
     const subscribers = try self.subscriptions.match(p.topic, &buf);
 
     for (subscribers) |s| {
-        const sesh = self.sessions.get(s.client_id) orelse continue;
+        const sess = self.sessions.get(s.client_id) orelse continue;
 
         const pub_packet: Publish = .{
             .dup = p.dup,
@@ -116,23 +116,17 @@ fn handlePublish(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void 
             .qos = p.qos,
             .retain = p.retain,
             .topic = p.topic,
-            .packet_id = if (p.qos != .at_most_once) sesh.packetId() else null,
+            .packet_id = if (p.qos != .at_most_once) sess.packetId() else null,
         };
 
-        if (sesh.conn) |sesh_conn| {
-            sesh_conn.send(pub_packet) catch |err| {
-                log.err("Failed to send publish to subscriber. client id: {s}. error {t}", .{ sesh_conn.clientId(), err });
-
-                continue;
-            };
-        } else {
-            sesh.appendQueuedMsg(pub_packet) catch continue;
-        }
+        try sess.sendMsg(pub_packet);
     }
 }
 
 fn handleSubscribe(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void {
     if (flags != 0x02) return error.Malformed;
+
+    const sess = self.sessions.get(conn.clientId()) orelse return error.SessionNotFound;
 
     var topics: [32]Subscribe.Topic = undefined;
 
@@ -155,16 +149,16 @@ fn handleSubscribe(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !voi
     }
 
     const ack: SubAck = .{ .packet_id = sub.packet_id, .filter_codes = filter_codes.items };
-    try conn.send(ack);
+    try sess.sendMsg(ack);
 }
 
 fn handlePingReq(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void {
-    _ = self;
-
     if (flags != 0 or body.len != 0) return error.Malformed;
 
+    const sess = self.sessions.get(conn.clientId()) orelse return error.SessionNotFound;
+
     const resp: PingResp = .{};
-    try conn.send(resp);
+    try sess.sendMsg(resp);
 }
 
 fn handleDisconnect(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void {
@@ -184,11 +178,11 @@ pub fn closeConn(self: *Broker, conn: *Conn) void {
     if (self.conns.get(id) == conn) {
         _ = self.conns.remove(id);
 
-        if (self.sessions.get(id)) |sesh| {
-            if (sesh.clean_session) {
+        if (self.sessions.get(id)) |sess| {
+            if (sess.clean_session) {
                 self.cleanSession(id);
             } else {
-                sesh.conn = null;
+                sess.conn = null;
             }
         }
     }
@@ -217,13 +211,13 @@ fn getOrSetSession(self: *Broker, conn: *Conn, clean_session: bool) !*Session {
         const key = try self.alloc.dupe(u8, client_id);
         errdefer self.alloc.free(key);
 
-        const sesh = try self.alloc.create(Session);
-        sesh.* = Session.init(self.alloc, conn, clean_session);
+        const sess = try self.alloc.create(Session);
+        sess.* = Session.init(self.alloc, conn, clean_session);
 
         gop.key_ptr.* = key;
-        gop.value_ptr.* = sesh;
+        gop.value_ptr.* = sess;
 
-        return sesh;
+        return sess;
     }
 
     log.debug("Found existing session. Client id: {s}", .{client_id});

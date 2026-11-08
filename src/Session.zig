@@ -51,6 +51,23 @@ pub fn init(alloc: Allocator, conn: *Conn, clean_session: bool) Session {
     };
 }
 
+pub fn sendMsg(self: *Session, msg: anytype) !void {
+    switch (@TypeOf(msg)) {
+        Publish => try self.sendPublish(msg),
+        else => {
+            if (self.conn) |conn| try conn.send(msg);
+        },
+    }
+}
+
+fn sendPublish(self: *Session, msg: Publish) !void {
+    _ = self;
+    _ = msg;
+    // check if client is online. If they are not queue the msg
+    // if qos 1/2 check if inflight buffer is full if it is add msg to queue
+    // send that bitch
+}
+
 pub fn packetId(self: *Session) u16 {
     const id = self.next_packet_id;
 
