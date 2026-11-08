@@ -167,7 +167,7 @@ fn handleDisconnect(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !vo
     conn.closing = true;
 }
 
-pub fn closeConn(self: *Broker, conn: *Conn) void {
+pub fn removeConn(self: *Broker, conn: *Conn) void {
     if (!conn.connected) return;
 
     const id = conn.clientId();

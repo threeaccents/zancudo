@@ -7,7 +7,6 @@ const sys = @import("sys.zig");
 const mqtt = @import("mqtt.zig");
 const linux = std.os.linux;
 const Broker = @import("Broker.zig");
-const FixedHeader = mqtt.FixedHeader;
 const Ip4Address = sys.Ip4Address;
 const Writer = mqtt.Writer;
 
@@ -20,7 +19,7 @@ fd: sys.fd_t,
 epfd: sys.fd_t,
 
 /// Only the first in_len bytes are valid.
-in_buf: [4096]u8 = undefined,
+in_buf: [16 * 1024]u8 = undefined,
 in_len: usize = 0,
 
 out_buf: [16_000]u8 = undefined,
@@ -47,9 +46,8 @@ keep_alive: u16 = 0,
 /// Flag if conn is listening to linux.EPOLL.OUT events
 epoll_out_on: bool = false,
 
-/// Reads what has arrived and hands each complete packet to the broker. A
-/// partial packet stays buffered until the rest arrives.
-pub fn onReadable(self: *Conn, broker: *Broker) !void {
+// reads data coming in and sets it to its internal buffer
+pub fn read(self: *Conn) !void {
     while (true) {
         // TCP is a byte stream, so a read can end mid-packet. Append after
         // whatever is already buffered.
@@ -64,28 +62,21 @@ pub fn onReadable(self: *Conn, broker: *Broker) !void {
         }
 
         self.in_len += n;
-
-        while (try FixedHeader.parse(self.in_buf[0..self.in_len])) |header| {
-            const packet_len = header.packetLen();
-            // TODO grow the buffer to fit up to the max mqtt packet size.
-            if (packet_len > self.in_buf.len) return error.PacketTooLarge;
-            // havent received the full packet yet
-            if (self.in_len < packet_len) break;
-
-            try broker.handlePacket(self, header, self.in_buf[header.header_len..packet_len]);
-
-            // Anything after a packet that ends the connection is ignored.
-            if (self.closing) return;
-
-            const leftover = self.in_buf[packet_len..self.in_len];
-            std.mem.copyForwards(u8, self.in_buf[0..leftover.len], leftover);
-            self.in_len = leftover.len;
-        }
     }
+}
+
+pub fn data(self: *Conn) []u8 {
+    return self.in_buf[0..self.in_len];
 }
 
 pub fn clientId(self: *Conn) []const u8 {
     return self.client_id_buf[0..self.client_id_len];
+}
+
+pub fn helpMeComeUpWtFuncName(self: *Conn, packet_len: usize) void {
+    const leftover = self.in_buf[packet_len..self.in_len];
+    std.mem.copyForwards(u8, self.in_buf[0..leftover.len], leftover);
+    self.in_len = leftover.len;
 }
 
 pub fn send(self: *Conn, packet: anytype) !void {
