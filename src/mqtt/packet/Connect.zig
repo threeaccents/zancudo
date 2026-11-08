@@ -38,7 +38,11 @@ pub fn decode(flags: u4, body: []const u8) !Connect {
     var r = Reader.init(body);
 
     const proto_name = try r.readString();
+    if (!std.mem.eql(u8, proto_name, "MQTT")) return error.InvalidProtocolName;
+
     const proto_level = try r.readByte();
+
+    if (proto_level != 4) return error.UnacceptableProtocolVersion;
 
     const connect_flags = try r.readByte();
 
@@ -63,6 +67,8 @@ pub fn decode(flags: u4, body: []const u8) !Connect {
     const keep_alive = try r.readU16();
 
     const client_id = try r.readString();
+
+    if ((!clean_session and client_id.len == 0) or client_id.len > 23) return error.IdentifierRejected;
 
     var will: ?Will = null;
     if (will_flag) {
