@@ -157,7 +157,7 @@ fn handleConnEv(self: *Server, ev: EpollEvent) !void {
         conn.consume(packet_len);
     }
 
-    if (conn.closing) {
+    if (conn.closing or conn.peer_closed) {
         self.closeConn(conn);
     }
 }

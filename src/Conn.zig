@@ -31,9 +31,12 @@ addr: Ip4Address,
 /// Set once CONNECT has been handled.
 connected: bool = false,
 
-/// The connection ended normally (DISCONNECT, hang-up, refused CONNECT) and
-/// should be closed.
+/// The connection ended normally (DISCONNECT, refused CONNECT, takeover) and
+/// should be closed. Anything still buffered is ignored.
 closing: bool = false,
+
+/// The client closed its side. Packets already buffered still get handled.
+peer_closed: bool = false,
 
 client_id_buf: [max_client_id_len]u8 = undefined,
 client_id_len: u8 = 0,
@@ -57,7 +60,7 @@ pub fn read(self: *Conn) !void {
 
         if (n == 0 and (self.in_len == self.in_buf.len)) return error.InBufferFull;
         if (n == 0) {
-            self.closing = true;
+            self.peer_closed = true;
             return;
         }
 
