@@ -65,7 +65,7 @@ pub fn serve(self: *Server) !void {
         const ready_events = try sys.epollWait(self.epfd, &events, -1);
 
         for (ready_events) |ev| {
-            if (isSocketEv(ev)) self.handleSocketEv(ev) else self.handleConnEv(ev);
+            if (isSocketEv(ev)) self.handleSocketEv(ev) else try self.handleConnEv(ev);
         }
     }
 }
@@ -104,7 +104,7 @@ fn handleSocketEv(self: *Server, ev: EpollEvent) void {
     }
 }
 
-fn handleConnEv(self: *Server, ev: EpollEvent) void {
+fn handleConnEv(self: *Server, ev: EpollEvent) !void {
     const conn: *Conn = @ptrFromInt(ev.data.ptr);
 
     if (ev.events & linux.EPOLL.OUT != 0) {
@@ -137,7 +137,7 @@ fn handleConnEv(self: *Server, ev: EpollEvent) void {
 
         const packet_len = header.packetLen();
         // TODO grow the buffer to fit up to the max mqtt packet size.
-        // if (packet_len > self.in_buf.len) return error.PacketTooLarge;
+        if (packet_len > conn.in_buf.len) return error.PacketTooLarge;
         //
         // havent received the full packet yet
         if (conn.in_len < packet_len) break;
