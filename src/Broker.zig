@@ -86,7 +86,7 @@ fn handleConnect(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void 
 
     if (conn.clean_session) self.cleanSession(client_id);
 
-    try self.setConn(conn);
+    try self.appendConn(conn);
 
     const sess = try self.getOrSetSession(conn, connect.clean_session);
 
@@ -203,35 +203,43 @@ fn cleanSession(self: *Broker, client_id: []const u8) void {
 fn getOrSetSession(self: *Broker, conn: *Conn, clean_session: bool) !*Session {
     const client_id = conn.clientId();
 
-    const gop = try self.sessions.getOrPut(self.alloc, client_id);
-    if (!gop.found_existing or gop.value_ptr.*.clean_session) {
+    const session = self.sessions.get(client_id);
+
+    if (session == null) {
+        const key = try self.alloc.dupe(u8, client_id);
+        errdefer self.alloc.free(key);
+
+        const sess = try self.alloc.create(Session);
+        errdefer self.alloc.destroy(sess);
+        sess.* = Session.init(self.alloc, conn, clean_session);
+
+        return sess;
+    }
+
+    if (session.?.clean_session) {
         self.cleanSession(client_id);
-        errdefer _ = self.sessions.remove(client_id);
 
         const key = try self.alloc.dupe(u8, client_id);
         errdefer self.alloc.free(key);
 
         const sess = try self.alloc.create(Session);
+        errdefer self.alloc.destroy(sess);
         sess.* = Session.init(self.alloc, conn, clean_session);
-
-        gop.key_ptr.* = key;
-        gop.value_ptr.* = sess;
 
         return sess;
     }
 
-    log.debug("Found existing session. Client id: {s}", .{client_id});
-    gop.value_ptr.*.conn = conn;
-    gop.value_ptr.*.existing_session = true;
+    session.?.existing_session = true;
+    session.?.conn = conn;
 
-    return gop.value_ptr.*;
+    return session.?;
 }
 
 fn removeSubscribers(self: *Broker, client_id: []const u8) void {
     self.subscriptions.removeSubscriber(self.alloc, client_id);
 }
 
-fn setConn(self: *Broker, conn: *Conn) !void {
+fn appendConn(self: *Broker, conn: *Conn) !void {
     // we might have an old conn still around for this client.
     // So we set the new conn and the old conn we close.
     if (try self.conns.fetchPut(self.alloc, conn.clientId(), conn)) |old| {
