@@ -7,13 +7,15 @@ const mqtt = @import("mqtt.zig");
 const Publish = mqtt.Publish;
 const Deque = std.Deque;
 
+const max_inflight_msgs = 50;
+
 // null means the client is offline.
 conn: ?*Conn,
 
 alloc: Allocator,
 
 // QoS 1&2 msgs waiting for responses
-inflight_msgs: [50]Publish = undefined,
+inflight_msgs: [max_inflight_msgs]Publish = undefined,
 inflight_msgs_len: u8 = 0,
 
 // msgs queued up while the client was offline
@@ -61,11 +63,26 @@ pub fn sendMsg(self: *Session, msg: anytype) !void {
 }
 
 fn sendPublish(self: *Session, msg: Publish) !void {
-    _ = self;
-    _ = msg;
     // check if client is online. If they are not queue the msg
     // if qos 1/2 check if inflight buffer is full if it is add msg to queue
     // send that bitch
+    if (self.conn == null) {
+        try self.appendQueuedMsg(msg);
+        return;
+    }
+
+    var conn = self.conn.?;
+
+    if (msg.qos == .at_least_once or msg.qos == .exactly_once) {
+        if (self.inflight_msgs_len >= max_inflight_msgs) {
+            // inflight buffer full so just queue the msg
+            return self.appendQueuedMsg(msg);
+        }
+    }
+
+    try conn.send(msg);
+
+    self.appendInflightMsg(msg);
 }
 
 pub fn packetId(self: *Session) u16 {
