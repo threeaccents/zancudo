@@ -1,4 +1,5 @@
 //! A BitCaskish key vaulue store
+//! Maybe using it for storing queued msgs on disk.
 const Kv = @This();
 
 const std = @import("std");
@@ -24,4 +25,10 @@ pub fn init(io: Io, path: []const u8) Kv {
     };
 }
 
-pub fn set(io: Io, key: []const u8, )
+pub fn set(io: Io, key: []const u8, val: []const u8) bool {
+    _ = io;
+    _ = key;
+    _ = val;
+
+    return true;
+}
