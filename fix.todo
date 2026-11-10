@@ -40,3 +40,33 @@ Broker / Session
    (Session.appendInflightMsg)
    - The overwritten msg's topic/payload leak, and a QoS 1/2 message is lost
      before it was acked.
+
+9. Inflight msgs mix owned and borrowed slices (Session.appendInflightMsg)
+   - sendPublish stores the caller's msg as-is, while drainQueuedMsgs moves
+     duped queue msgs in. Nothing can tell which topic/payload to free.
+
+Session tests
+
+10. "inflight buffer is full" uses a length that can't happen
+    - inflight_msgs_len = max_inflight_msgs + 1, but the length never goes
+      past max_inflight_msgs. The test passes with >= or >, so an off-by-one
+      slips through. Use max_inflight_msgs and check inflight_msgs_len didn't
+      change.
+
+11. page_allocator hides leaks
+    - appendQueuedMsg dupes topic/payload and nothing frees them.
+      std.testing.allocator would catch it, but Session has no deinit yet.
+
+12. Empty topic/payload never exercise the dupe
+    - With real bytes the test can check the queued copy has the same content
+      in different memory.
+
+13. "offline client" builds an invalid QoS 0 PUBLISH
+    - dup = true, but DUP MUST be 0 for QoS 0 [MQTT-3.3.1-2].
+    - QoS 0 has no packet id, so checking packet_id checks a field that's
+      never sent. Check topic/payload instead.
+
+14. "gets added to the inflight queue" only checks state (optional)
+    - Reading fds[1] and checking the PUBLISH bytes would show the send works.
+
+15. drainQueuedMsgs has no tests.
