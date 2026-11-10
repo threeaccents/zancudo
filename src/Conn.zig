@@ -110,7 +110,7 @@ pub fn flush(self: *Conn) !void {
 
         std.debug.print("send {d} bytes\n", .{n});
 
-        @memmove(self.out_buf[0..n], self.out_buf[n..self.out_len]);
+        @memmove(self.out_buf[0..(self.out_len - n)], self.out_buf[n..self.out_len]);
 
         self.out_len -= n;
     }
