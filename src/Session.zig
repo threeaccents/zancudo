@@ -3,6 +3,8 @@ const Session = @This();
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Conn = @import("Conn.zig");
+const sys = @import("sys.zig");
+const linux = std.os.linux;
 const mqtt = @import("mqtt.zig");
 const Publish = mqtt.Publish;
 const Deque = std.Deque;
@@ -162,7 +164,11 @@ test "sendPublish offline client gets put in the queue" {
 
 test "sendPublish qos 1/2 get put in queue if inflight buffer is full" {
     const allocator = std.heap.page_allocator;
-    var conn: Conn = .{ .fd = 5, .epfd = 6, .addr = .{
+    const fds = try sys.socketpair(linux.AF.UNIX, linux.SOCK.STREAM, 0);
+    defer sys.close(fds[0]);
+    defer sys.close(fds[1]);
+
+    var conn: Conn = .{ .fd = fds[0], .epfd = 6, .addr = .{
         .ip = .{ 127, 0, 0, 1 },
         .port = 4269,
     } };
@@ -191,7 +197,11 @@ test "sendPublish qos 1/2 get put in queue if inflight buffer is full" {
 
 test "sendPublish qos 1/2 gets added to the inflight queue" {
     const allocator = std.heap.page_allocator;
-    var conn: Conn = .{ .fd = 5, .epfd = 6, .addr = .{
+    const fds = try sys.socketpair(linux.AF.UNIX, linux.SOCK.STREAM, 0);
+    defer sys.close(fds[0]);
+    defer sys.close(fds[1]);
+
+    var conn: Conn = .{ .fd = fds[0], .epfd = 6, .addr = .{
         .ip = .{ 127, 0, 0, 1 },
         .port = 4269,
     } };

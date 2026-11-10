@@ -45,6 +45,18 @@ pub fn socket(domain: u32, sock_type: u32, protocol: u32) SocketError!fd_t {
     };
 }
 
+/// Two sockets already connected to each other. Bytes sent on one come out
+/// of the other.
+pub fn socketpair(domain: u32, sock_type: u32, protocol: u32) SocketError![2]fd_t {
+    var fds: [2]fd_t = undefined;
+    const rc = linux.socketpair(domain, sock_type, protocol, &fds);
+    return switch (linux.errno(rc)) {
+        .SUCCESS => fds,
+        .MFILE, .NFILE => error.TooManyOpenFiles,
+        else => |err| unexpected(err),
+    };
+}
+
 /// Set an int-valued socket option.
 pub fn setsockopt(fd: fd_t, level: i32, optname: u32, value: c_int) error{Unexpected}!void {
     const bytes = std.mem.asBytes(&value);
