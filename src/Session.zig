@@ -65,7 +65,6 @@ pub fn sendMsg(self: *Session, msg: anytype) !void {
 }
 
 fn sendPublish(self: *Session, msg: Publish) !void {
-    std.debug.print("calling sendPublish\n", .{});
     // check if client is online. If they are not queue the msg
     // if qos 1/2 check if inflight buffer is full if it is add msg to queue
     // send that bitch
@@ -79,7 +78,6 @@ fn sendPublish(self: *Session, msg: Publish) !void {
             return self.appendQueuedMsg(msg);
         }
 
-        std.debug.print("appending to queue\n", .{});
         self.appendInflightMsg(msg);
     }
 
@@ -127,15 +125,12 @@ pub fn drainQueuedMsgs(self: *Session) !void {
 }
 
 pub fn appendInflightMsg(self: *Session, msg: Publish) void {
-    std.debug.print("sppendind\n", .{});
-
     // override the oldest msgs.
     if (self.inflight_msgs_len >= self.inflight_msgs.len) self.inflight_msgs_len = 0;
 
     self.inflight_msgs[self.inflight_msgs_len] = msg;
 
     self.inflight_msgs_len += 1;
-    std.debug.print("appended\n", .{});
 }
 
 test "sendPublish offline client gets put in the queue" {
