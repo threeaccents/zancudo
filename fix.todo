@@ -2,12 +2,6 @@ Things to clean up
 
 Server / Conn
 
-1. PacketTooLarge takes down the whole server (Server.handleConnEv)
-   - handleConnEv returns error.PacketTooLarge and serve() calls it with try,
-     so the error leaves main and the process exits. Any client can send a
-     header claiming more than 16KB and stop the broker for everyone.
-   - Close just that conn, like the parse and handlePacket errors do.
-
 2. One subscriber's failed send closes the publisher (Broker.handlePublish)
    - try sess.sendMsg(pub_packet) bubbles a subscriber's error up through
      handlePacket, so Server closes the publisher, whose packet was fine.
