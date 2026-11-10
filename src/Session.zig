@@ -134,7 +134,7 @@ pub fn appendInflightMsg(self: *Session, msg: Publish) void {
 }
 
 test "sendPublish offline client gets put in the queue" {
-    const allocator = std.heap.page_allocator;
+    const allocator = std.testing.allocator;
 
     var sess: Session = .{
         .conn = null,
@@ -158,7 +158,7 @@ test "sendPublish offline client gets put in the queue" {
 }
 
 test "sendPublish qos 1/2 get put in queue if inflight buffer is full" {
-    const allocator = std.heap.page_allocator;
+    const allocator = std.testing.allocator;
     const fds = try sys.socketpair(linux.AF.UNIX, linux.SOCK.STREAM, 0);
     defer sys.close(fds[0]);
     defer sys.close(fds[1]);
@@ -171,7 +171,7 @@ test "sendPublish qos 1/2 get put in queue if inflight buffer is full" {
     var sess: Session = .{
         .conn = &conn,
         .alloc = allocator,
-        .inflight_msgs_len = max_inflight_msgs + 1,
+        .inflight_msgs_len = max_inflight_msgs,
     };
 
     const msg: Publish = .{
@@ -191,7 +191,7 @@ test "sendPublish qos 1/2 get put in queue if inflight buffer is full" {
 }
 
 test "sendPublish qos 1/2 gets added to the inflight queue" {
-    const allocator = std.heap.page_allocator;
+    const allocator = std.testing.allocator;
     const fds = try sys.socketpair(linux.AF.UNIX, linux.SOCK.STREAM, 0);
     defer sys.close(fds[0]);
     defer sys.close(fds[1]);

@@ -10,8 +10,6 @@ Server / Conn
 3. Small stuff
    - The parse error log in handleConnEv prints clientId, which is empty
      before CONNECT. Print the fd like the read error does.
-   - handleSocketEv takes ev and never uses it.
-   - Server.ip and Server.port are stored but never read.
    - Conn.clean_session is set in handleConnect but never read. Session has
      its own.
    - Server.deinit doesn't free the open conns.
@@ -46,12 +44,6 @@ Broker / Session
      duped queue msgs in. Nothing can tell which topic/payload to free.
 
 Session tests
-
-10. "inflight buffer is full" uses a length that can't happen
-    - inflight_msgs_len = max_inflight_msgs + 1, but the length never goes
-      past max_inflight_msgs. The test passes with >= or >, so an off-by-one
-      slips through. Use max_inflight_msgs and check inflight_msgs_len didn't
-      change.
 
 11. page_allocator hides leaks
     - appendQueuedMsg dupes topic/payload and nothing frees them.
