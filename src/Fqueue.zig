@@ -26,26 +26,39 @@ pub fn init(io: Io, path: []const u8) !Fqueue {
 }
 
 pub fn enqueue(self: *Fqueue, record: []const u8) !void {
-    var buf: [65538]u8 = undefined;
+    if (record.len > std.math.maxInt(u16)) return error.RecordTooLarge;
 
-    const start_offset = self.end;
+    var buf: [2 + std.math.maxInt(u16)]u8 = undefined;
 
-    var file_writer = self.file.writer(self.io, &.{});
-    try file_writer.seekTo(start_offset);
+    std.mem.writeInt(u16, buf[0..2], @intCast(record.len), .little);
+    @memcpy(buf[2..][0..record.len], record);
 
-    std.mem.writeInt(u16, buf[0..2], record.len, .big);
+    const len = 2 + record.len;
 
-    @memcpy(buf[2..], record);
+    var fw = self.file.writer(self.io, &.{});
 
-    const len = record.len + 2;
-
-    try file_writer.interface.writeAll(&buf[0..len]);
+    try fw.seekTo(self.end);
+    try fw.interface.writeAll(buf[0..len]);
 
     self.end += len;
 }
 
-pub fn dequeue(self: Fqueue) []u8 {
-    _ = self;
+pub fn dequeue(self: *Fqueue, out: []u8) !?[]u8 {
+    if (self.offset >= self.end) return null;
 
-    // const record_len = std.mem.readInt(u16, , endian: Endian)
+    var buf: [2 + std.math.maxInt(u16)]u8 = undefined;
+    var fr = self.file.reader(self.io, &buf);
+    try fr.seekTo(self.offset);
+
+    const record_len = try fr.interface.takeInt(u16, .little);
+    if (record_len > out.len) return error.BufferTooSmall;
+    try fr.interface.readSliceAll(out[0..record_len]);
+
+    const consumed: u64 = 2 + record_len;
+    self.offset += consumed;
+    self.dead_bytes += consumed;
+
+    // if (self.offset == self.end) truncate file to 0 and zero the three fields
+
+    return out[0..record_len];
 }
