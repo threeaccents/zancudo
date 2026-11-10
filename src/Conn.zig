@@ -86,6 +86,8 @@ pub fn send(self: *Conn, packet: anytype) !void {
     var w = Writer.init(self.out_buf[self.out_len..]);
     try packet.encode(&w);
 
+    std.debug.print("written bytes to out buff {d}\n", .{w.written().len});
+
     self.out_len += w.written().len;
 
     try self.flush();
@@ -93,6 +95,8 @@ pub fn send(self: *Conn, packet: anytype) !void {
 
 pub fn flush(self: *Conn) !void {
     while (self.out_len > 0) {
+        std.debug.print("sending bytes\n", .{});
+        std.debug.print("buff len {d}\n", .{self.out_len});
         const n = sys.send(self.fd, self.out_buf[0..self.out_len]) catch |err| switch (err) {
             error.WouldBlock => {
                 if (!self.epoll_out_on) {
@@ -104,7 +108,9 @@ pub fn flush(self: *Conn) !void {
             else => return err,
         };
 
-        @memmove(self.out_buf[0..(self.out_len - n)], self.out_buf[n..self.out_len]);
+        std.debug.print("send {d} bytes\n", .{n});
+
+        @memmove(self.out_buf[0..n], self.out_buf[n..self.out_len]);
 
         self.out_len -= n;
     }

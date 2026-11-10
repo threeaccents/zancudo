@@ -83,8 +83,16 @@ pub fn build(b: *std.Build) void {
     // Creates an executable that will run `test` blocks from the executable's
     // root module. Only files reachable through imports from main.zig are
     // included, so a file's tests run only once something imports it.
+    // Filters are applied at compile time, so the binary sent to orb only
+    // holds the matching tests: `zig build test -Dtest-filter="Publish"`.
+    const test_filters = b.option(
+        []const []const u8,
+        "test-filter",
+        "Only run tests whose name contains this (repeatable)",
+    ) orelse &.{};
     const exe_tests = b.addTest(.{
         .root_module = exe.root_module,
+        .filters = test_filters,
     });
 
     // A run step that will run the test executable.

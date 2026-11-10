@@ -119,11 +119,12 @@ pub const SendError = error{ WouldBlock, ConnectionReset, BrokenPipe, Unexpected
 
 /// May send fewer bytes than given. See sendAll.
 pub fn send(fd: fd_t, bytes: []const u8) SendError!usize {
+    std.debug.print("in send sending {d} bytes", .{bytes.len});
     // NOSIGNAL: a peer that's gone gives us EPIPE instead of a SIGPIPE that
     // would kill the process.
     const rc = linux.sendto(fd, bytes.ptr, bytes.len, linux.MSG.NOSIGNAL, null, 0);
     return switch (linux.errno(rc)) {
-        .SUCCESS => rc,
+        .SUCCESS => @intCast(rc),
         .AGAIN => error.WouldBlock,
         .CONNRESET => error.ConnectionReset,
         .PIPE => error.BrokenPipe,

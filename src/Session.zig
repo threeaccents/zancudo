@@ -63,13 +63,11 @@ pub fn sendMsg(self: *Session, msg: anytype) !void {
 }
 
 fn sendPublish(self: *Session, msg: Publish) !void {
+    std.debug.print("calling sendPublish\n", .{});
     // check if client is online. If they are not queue the msg
     // if qos 1/2 check if inflight buffer is full if it is add msg to queue
     // send that bitch
-    if (self.conn == null) {
-        try self.appendQueuedMsg(msg);
-        return;
-    }
+    if (self.conn == null) return self.appendQueuedMsg(msg);
 
     var conn = self.conn.?;
 
@@ -78,11 +76,12 @@ fn sendPublish(self: *Session, msg: Publish) !void {
             // inflight buffer full so just queue the msg
             return self.appendQueuedMsg(msg);
         }
+
+        std.debug.print("appending to queue\n", .{});
+        self.appendInflightMsg(msg);
     }
 
     try conn.send(msg);
-
-    self.appendInflightMsg(msg);
 }
 
 pub fn packetId(self: *Session) u16 {
@@ -126,10 +125,93 @@ pub fn drainQueuedMsgs(self: *Session) !void {
 }
 
 pub fn appendInflightMsg(self: *Session, msg: Publish) void {
+    std.debug.print("sppendind\n", .{});
+
     // override the oldest msgs.
     if (self.inflight_msgs_len >= self.inflight_msgs.len) self.inflight_msgs_len = 0;
 
     self.inflight_msgs[self.inflight_msgs_len] = msg;
 
     self.inflight_msgs_len += 1;
+    std.debug.print("appended\n", .{});
+}
+
+test "sendPublish offline client gets put in the queue" {
+    const allocator = std.heap.page_allocator;
+
+    var sess: Session = .{
+        .conn = null,
+        .alloc = allocator,
+    };
+
+    const msg: Publish = .{
+        .packet_id = 1,
+        .qos = .at_most_once,
+        .dup = true,
+        .retain = true,
+        .payload = &.{},
+        .topic = &.{},
+    };
+
+    try sess.sendPublish(msg);
+
+    const p = sess.queued_msgs.popFront().?;
+
+    try std.testing.expectEqual(msg.packet_id, p.packet_id);
+}
+
+test "sendPublish qos 1/2 get put in queue if inflight buffer is full" {
+    const allocator = std.heap.page_allocator;
+    var conn: Conn = .{ .fd = 5, .epfd = 6, .addr = .{
+        .ip = .{ 127, 0, 0, 1 },
+        .port = 4269,
+    } };
+
+    var sess: Session = .{
+        .conn = &conn,
+        .alloc = allocator,
+        .inflight_msgs_len = max_inflight_msgs + 1,
+    };
+
+    const msg: Publish = .{
+        .packet_id = 1,
+        .qos = .at_least_once,
+        .dup = true,
+        .retain = true,
+        .payload = &.{},
+        .topic = &.{},
+    };
+
+    try sess.sendPublish(msg);
+
+    const p = sess.queued_msgs.popFront().?;
+
+    try std.testing.expectEqual(msg.packet_id, p.packet_id);
+}
+
+test "sendPublish qos 1/2 gets added to the inflight queue" {
+    const allocator = std.heap.page_allocator;
+    var conn: Conn = .{ .fd = 5, .epfd = 6, .addr = .{
+        .ip = .{ 127, 0, 0, 1 },
+        .port = 4269,
+    } };
+
+    var sess: Session = .{
+        .conn = &conn,
+        .alloc = allocator,
+    };
+
+    const msg: Publish = .{
+        .packet_id = 1,
+        .qos = .at_least_once,
+        .dup = true,
+        .retain = true,
+        .payload = &.{},
+        .topic = &.{},
+    };
+
+    try sess.sendPublish(msg);
+
+    try std.testing.expectEqual(1, sess.inflight_msgs_len);
+    try std.testing.expectEqual(msg.packet_id, sess.inflight_msgs[0].packet_id);
 }
