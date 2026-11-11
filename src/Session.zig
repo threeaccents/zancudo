@@ -55,8 +55,20 @@ pub fn init(alloc: Allocator, conn: *Conn, clean_session: bool) Session {
     };
 }
 
-pub fn deinit(self: *Session) !void {
-    _ = self;
+pub fn deinit(self: *Session) void {
+    for (self.inflight_msgs[0..self.inflight_msgs_len]) |msg| {
+        self.alloc.free(msg.topic);
+        self.alloc.free(msg.payload);
+    }
+
+    self.inflight_msgs = undefined;
+
+    while (self.queued_msgs.popFront()) |msg| {
+        self.alloc.free(msg.topic);
+        self.alloc.free(msg.payload);
+    }
+
+    self.queued_msgs.deinit(self.alloc);
 }
 
 pub fn sendMsg(self: *Session, msg: anytype) !void {
@@ -150,6 +162,7 @@ test "sendPublish offline client gets put in the queue" {
         .conn = null,
         .alloc = allocator,
     };
+    defer sess.deinit();
 
     const msg: Publish = .{
         .packet_id = 1,
