@@ -180,53 +180,77 @@ test "sendPublish offline client gets put in the queue" {
     try std.testing.expectEqual(msg.packet_id, p.packet_id);
 }
 
-// test "sendPublish qos 1/2 get put in queue if inflight buffer is full" { const allocator = std.testing.allocator; const fds = try sys.socketpair(linux.AF.UNIX, linux.SOCK.STREAM, 0); defer sys.close(fds[0]); defer sys.close(fds[1]); var conn: Conn = .{ .fd = fds[0], .epfd = 6, .addr = .{ .ip = .{ 127, 0, 0, 1 }, .port = 4269, } }; var sess: Session = .{ .conn = &conn, .alloc = allocator,
-//         .inflight_msgs_len = max_inflight_msgs,
-//     };
-//
-//     const msg: Publish = .{
-//         .packet_id = 1,
-//         .qos = .at_least_once,
-//         .dup = true,
-//         .retain = true,
-//         .payload = &.{},
-//         .topic = &.{},
-//     };
-//
-//     try sess.sendPublish(msg);
-//
-//     const p = sess.queued_msgs.popFront().?;
-//
-//     try std.testing.expectEqual(msg.packet_id, p.packet_id);
-// }
-//
-// test "sendPublish qos 1/2 gets added to the inflight queue" {
-//     const allocator = std.testing.allocator;
-//     const fds = try sys.socketpair(linux.AF.UNIX, linux.SOCK.STREAM, 0);
-//     defer sys.close(fds[0]);
-//     defer sys.close(fds[1]);
-//
-//     var conn: Conn = .{ .fd = fds[0], .epfd = 6, .addr = .{
-//         .ip = .{ 127, 0, 0, 1 },
-//         .port = 4269,
-//     } };
-//
-//     var sess: Session = .{
-//         .conn = &conn,
-//         .alloc = allocator,
-//     };
-//
-//     const msg: Publish = .{
-//         .packet_id = 1,
-//         .qos = .at_least_once,
-//         .dup = true,
-//         .retain = true,
-//         .payload = &.{},
-//         .topic = &.{},
-//     };
-//
-//     try sess.sendPublish(msg);
-//
-//     try std.testing.expectEqual(1, sess.inflight_msgs_len);
-//     try std.testing.expectEqual(msg.packet_id, sess.inflight_msgs[0].packet_id);
-// }
+test "sendPublish qos 1/2 get put in queue if inflight buffer is full" {
+    const allocator = std.testing.allocator;
+    const fds = try sys.socketpair(linux.AF.UNIX, linux.SOCK.STREAM, 0);
+    defer sys.close(fds[0]);
+    defer sys.close(fds[1]);
+    var conn: Conn = .{ .fd = fds[0], .epfd = 6, .addr = .{
+        .ip = .{ 127, 0, 0, 1 },
+        .port = 4269,
+    } };
+    var sess: Session = .{
+        .conn = &conn,
+        .alloc = allocator,
+    };
+    defer sess.deinit();
+
+    // fill buffer
+    for (0..50) |n| {
+        try sess.appendInflightMsg(.{
+            .dup = true,
+            .payload = "test payload",
+            .topic = "test_topoc",
+            .packet_id = @intCast(n),
+            .qos = .at_least_once,
+            .retain = true,
+        });
+    }
+
+    const msg: Publish = .{
+        .packet_id = 1,
+        .qos = .at_least_once,
+        .dup = true,
+        .retain = true,
+        .payload = &.{},
+        .topic = &.{},
+    };
+
+    try sess.sendPublish(msg);
+
+    const p = sess.queued_msgs.popFront().?;
+
+    try std.testing.expectEqual(msg.packet_id, p.packet_id);
+}
+
+test "sendPublish qos 1/2 gets added to the inflight queue" {
+    const allocator = std.testing.allocator;
+    const fds = try sys.socketpair(linux.AF.UNIX, linux.SOCK.STREAM, 0);
+    defer sys.close(fds[0]);
+    defer sys.close(fds[1]);
+
+    var conn: Conn = .{ .fd = fds[0], .epfd = 6, .addr = .{
+        .ip = .{ 127, 0, 0, 1 },
+        .port = 4269,
+    } };
+
+    var sess: Session = .{
+        .conn = &conn,
+        .alloc = allocator,
+    };
+    defer sess.deinit();
+
+    const msg: Publish = .{
+        .packet_id = 1,
+        .qos = .at_least_once,
+        .dup = true,
+        .retain = true,
+        .payload = &.{},
+        .topic = &.{},
+    };
+
+    try sess.sendPublish(msg);
+
+    try std.testing.expectEqual(1, sess.inflight_msgs_len);
+    try std.testing.expectEqual(msg.packet_id, sess.inflight_msgs[0].packet_id);
+}
