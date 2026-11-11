@@ -9,6 +9,8 @@ const mqtt = @import("mqtt.zig");
 const Publish = mqtt.Publish;
 const Deque = std.Deque;
 
+const log = std.log.scoped(.session);
+
 const max_inflight_msgs = 50;
 
 // null means the client is offline.
@@ -97,7 +99,10 @@ fn sendPublish(self: *Session, msg: Publish) !void {
         try self.appendInflightMsg(msg);
     }
 
-    try conn.send(msg);
+    // follow the spec better. For now just log
+    conn.send(msg) catch |err| {
+        log.err("Failed to send msg {s} {t}", .{ msg.topic, err });
+    };
 }
 
 pub fn packetId(self: *Session) u16 {

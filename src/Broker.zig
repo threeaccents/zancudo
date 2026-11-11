@@ -116,7 +116,9 @@ fn handlePublish(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void 
             .packet_id = if (p.qos != .at_most_once) sess.packetId() else null,
         };
 
-        try sess.sendMsg(pub_packet);
+        sess.sendMsg(pub_packet) catch |err| {
+            log.err("Failed to send client publish msg. topic {s} client id {s}. Error: {t}", .{ pub_packet.topic, s.client_id, err });
+        };
     }
 }
 
