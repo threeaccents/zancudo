@@ -2,16 +2,7 @@ Things to clean up
 
 Server / Conn
 
-2. One subscriber's failed send closes the publisher (Broker.handlePublish)
-   - try sess.sendMsg(pub_packet) bubbles a subscriber's error up through
-     handlePacket, so Server closes the publisher, whose packet was fine.
-   - The error belongs to the subscriber's conn.
-
 3. Small stuff
-   - The parse error log in handleConnEv prints clientId, which is empty
-     before CONNECT. Print the fd like the read error does.
-   - Conn.clean_session is set in handleConnect but never read. Session has
-     its own.
    - Server.deinit doesn't free the open conns.
 
 Broker / Session
@@ -21,10 +12,9 @@ Broker / Session
      slice of the old Conn's client_id_buf, which is freed when the old conn
      closes. Later lookups compare against freed memory.
 
-5. removeSession leaks the session's messages (Broker.removeSession)
-   - Destroys the Session without freeing queued_msgs (the deque and the
-     duped topic/payload) or the inflight msgs. Happens when a clean=1
-     connect discards a clean=0 session that had queued messages.
+5. removeSession calls deinit on a freed Session (Broker.removeSession)
+   - s.value.deinit() runs after alloc.destroy(s.value), so it reads freed
+     memory. deinit has to run before destroy.
 
 6. Resume doesn't resend inflight messages (Broker.handleConnect)
    - On reconnect with clean_session=0 the server MUST resend unacked QoS 1/2
@@ -34,20 +24,12 @@ Broker / Session
 7. drainQueuedMsgs drops messages on a failed send (Session.drainQueuedMsgs)
    - catch continue skips the msg, and its topic/payload are never freed.
 
-8. appendInflightMsg overwrites the oldest message when full
-   (Session.appendInflightMsg)
-   - The overwritten msg's topic/payload leak, and a QoS 1/2 message is lost
-     before it was acked.
-
-9. Inflight msgs mix owned and borrowed slices (Session.appendInflightMsg)
-   - sendPublish stores the caller's msg as-is, while drainQueuedMsgs moves
-     duped queue msgs in. Nothing can tell which topic/payload to free.
+8. drainQueuedMsgs can overflow the inflight buffer (Session.drainQueuedMsgs)
+   - appendInflightMsg hits unreachable when full. sendPublish checks first,
+     drainQueuedMsgs doesn't, so reconnecting with more queued QoS 1/2 msgs
+     than free inflight slots panics (undefined behavior in ReleaseFast).
 
 Session tests
-
-11. page_allocator hides leaks
-    - appendQueuedMsg dupes topic/payload and nothing frees them.
-      std.testing.allocator would catch it, but Session has no deinit yet.
 
 12. Empty topic/payload never exercise the dupe
     - With real bytes the test can check the queued copy has the same content
