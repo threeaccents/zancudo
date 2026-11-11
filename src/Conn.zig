@@ -40,7 +40,6 @@ peer_closed: bool = false,
 
 client_id_buf: [max_client_id_len]u8 = undefined,
 client_id_len: u8 = 0,
-clean_session: bool = true,
 
 /// In seconds. 0 means no timeout.
 keep_alive: u16 = 0,

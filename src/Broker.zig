@@ -80,7 +80,6 @@ fn handleConnect(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void 
     conn.setClientId(self.io, connect.client_id);
     const client_id = conn.clientId();
 
-    conn.clean_session = connect.clean_session;
     conn.keep_alive = connect.keep_alive;
     conn.connected = true;
 
