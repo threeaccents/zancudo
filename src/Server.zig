@@ -130,7 +130,7 @@ fn handleConnEv(self: *Server, ev: EpollEvent) !void {
 
     while (true) {
         const header = FixedHeader.parse(conn.data()) catch |err| {
-            log.err("failed to parse fixed header conn[{s}]. error: {t}", .{ conn.clientId(), err });
+            log.err("failed to parse fixed header conn[{d}]. error: {t}", .{ conn.fd, err });
             self.closeConn(conn);
             return;
         } orelse break;
