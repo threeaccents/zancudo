@@ -189,10 +189,10 @@ pub fn removeConn(self: *Broker, conn: *Conn) void {
 
 fn removeSession(self: *Broker, client_id: []const u8) void {
     if (self.sessions.fetchRemove(client_id)) |s| {
+        s.value.deinit();
+
         self.alloc.free(s.key);
         self.alloc.destroy(s.value);
-
-        s.value.deinit();
     }
 }
 
