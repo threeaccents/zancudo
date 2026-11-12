@@ -2,8 +2,11 @@ Things to clean up
 
 Server / Conn
 
-3. Small stuff
-   - Server.deinit doesn't free the open conns.
+3. Accept error paths don't undo earlier steps (Server.handleSocketEv)
+   - conns.put fails: the fd is closed, but the Conn from create is never
+     destroyed.
+   - epollAdd fails: the Conn is destroyed but stays in conns, so deinit can
+     close and free it again.
 
 Broker / Session
 
@@ -11,10 +14,6 @@ Broker / Session
    - fetchPut only replaces the value when the key exists. The key stays a
      slice of the old Conn's client_id_buf, which is freed when the old conn
      closes. Later lookups compare against freed memory.
-
-5. removeSession calls deinit on a freed Session (Broker.removeSession)
-   - s.value.deinit() runs after alloc.destroy(s.value), so it reads freed
-     memory. deinit has to run before destroy.
 
 6. Resume doesn't resend inflight messages (Broker.handleConnect)
    - On reconnect with clean_session=0 the server MUST resend unacked QoS 1/2
