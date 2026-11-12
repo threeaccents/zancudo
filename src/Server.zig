@@ -19,6 +19,7 @@ alloc: Allocator,
 ip: [4]u8,
 port: u16,
 broker: *Broker,
+conns: std.AutoHashMapUnmanaged(sys.fd_t, *Conn) = .empty,
 
 const log = std.log.scoped(.server);
 
@@ -56,6 +57,15 @@ pub fn init(
 pub fn deinit(self: *Server) void {
     sys.close(self.fd);
     sys.close(self.epfd);
+
+    var it = self.conns.valueIterator();
+
+    while (it.next()) |conn| {
+        sys.close(conn.*.fd);
+        self.alloc.destroy(conn.*);
+    }
+
+    self.conns.deinit(self.alloc);
 }
 
 pub fn serve(self: *Server) !void {
@@ -94,6 +104,12 @@ fn handleSocketEv(self: *Server, ev: EpollEvent) void {
             .fd = accepted.fd,
             .epfd = self.epfd,
             .addr = accepted.addr,
+        };
+
+        self.conns.put(self.alloc, conn.fd, conn) catch |err| {
+            log.err("failed to append conn to conn list: {t}", .{err});
+            sys.close(accepted.fd);
+            continue;
         };
 
         sys.epollAdd(self.epfd, accepted.fd, linux.EPOLL.IN, .{ .ptr = @intFromPtr(conn) }) catch |err| {
@@ -163,6 +179,7 @@ fn handleConnEv(self: *Server, ev: EpollEvent) !void {
 }
 
 fn closeConn(self: *Server, conn: *Conn) void {
+    _ = self.conns.remove(conn.fd);
     log.info("client fd = {d} disconnected", .{conn.fd});
     self.broker.removeConn(conn);
     sys.close(conn.fd);
