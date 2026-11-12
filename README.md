@@ -71,5 +71,6 @@ common flows of the spec, without TLS, clustering or MQTT 5.
 ### Later
 
 - [ ] Persist sessions and queues across restarts (Fqueue)
+- [ ] Bitcask-inspired KV store for inflight messages
 - [ ] MQTT over WebSocket
 - [ ] Username / password auth
