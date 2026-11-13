@@ -10,7 +10,7 @@ pub fn main(init: std.process.Init) !void {
 
     var broker: Broker = .init(io, alloc);
 
-    var server: Server = try .init(alloc, &broker, .{ 127, 0, 0, 1 }, 42069);
+    var server: Server = try .init(io, alloc, &broker, .{ 127, 0, 0, 1 }, 42069);
     defer server.deinit();
 
     try server.serve();

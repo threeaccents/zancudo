@@ -8,6 +8,7 @@ const mqtt = @import("mqtt.zig");
 const linux = std.os.linux;
 const Ip4Address = sys.Ip4Address;
 const Writer = mqtt.Writer;
+const Timestamp = std.Io.Timestamp;
 
 /// MQTT 3.1.1 only requires servers to accept client IDs up to 23 bytes.
 pub const max_client_id_len = 23;
@@ -46,6 +47,9 @@ keep_alive: u16 = 0,
 
 /// Flag if conn is listening to linux.EPOLL.OUT events
 epoll_out_on: bool = false,
+
+/// last packet recevied from client. Used for keep-alive
+last_packet_at: u64 = 0,
 
 // reads data coming in and sets it to its internal buffer
 pub fn read(self: *Conn) !void {
@@ -112,6 +116,10 @@ pub fn flush(self: *Conn) !void {
         self.epoll_out_on = false;
         try sys.epollMod(self.epfd, self.fd, linux.EPOLL.IN, .{ .ptr = @intFromPtr(self) });
     }
+}
+
+pub fn setLastPacketAt(self: *Conn, io: Io) void {
+    self.last_packet_at = @intCast(Timestamp.now(io, .awake).nanoseconds);
 }
 
 pub fn setClientId(self: *Conn, io: Io, client_id: []const u8) void {

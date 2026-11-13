@@ -42,6 +42,8 @@ pub fn handlePacket(self: *Broker, conn: *Conn, header: FixedHeader, body: []con
     // connect has to be the first msg sent
     if (!conn.connected and header.packet_type != .connect) return error.ProtocolViolation;
 
+    conn.setLastPacketAt(self.io);
+
     switch (header.packet_type) {
         .connect => try self.handleConnect(conn, header.flags, body),
         .disconnect => try self.handleDisconnect(conn, header.flags, body),

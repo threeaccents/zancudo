@@ -10,20 +10,25 @@ const Conn = @import("Conn.zig");
 const mqtt = @import("mqtt.zig");
 const Broker = @import("Broker.zig");
 const FixedHeader = mqtt.FixedHeader;
+const Timestamp = std.Io.Timestamp;
+const Io = std.Io;
 
 // socket fd
 fd: sys.fd_t,
 // epoll fd
 epfd: sys.fd_t,
+timerfd: sys.fd_t,
 alloc: Allocator,
 ip: [4]u8,
 port: u16,
 broker: *Broker,
 conns: std.AutoHashMapUnmanaged(sys.fd_t, *Conn) = .empty,
+io: Io,
 
 const log = std.log.scoped(.server);
 
 pub fn init(
+    io: Io,
     alloc: Allocator,
     broker: *Broker,
     ip: [4]u8,
@@ -42,21 +47,28 @@ pub fn init(
     // data.ptr = 0 marks the listener, since no Conn lives at address 0.
     try sys.epollAdd(epfd, socket_fd, linux.EPOLL.IN, .{ .ptr = 0 });
 
+    const timerfd = try sys.timerfdCreate();
+    try sys.epollAdd(epfd, timerfd, linux.EPOLL.IN, .{ .ptr = 1 });
+    try sys.timerfdSet(timerfd, std.time.ns_per_s, std.time.ns_per_s);
+
     log.info("listening on {f}", .{addr});
 
     return .{
+        .io = io,
         .fd = socket_fd,
         .ip = ip,
         .port = port,
         .epfd = epfd,
         .broker = broker,
         .alloc = alloc,
+        .timerfd = timerfd,
     };
 }
 
 pub fn deinit(self: *Server) void {
     sys.close(self.fd);
     sys.close(self.epfd);
+    sys.close(self.timerfd);
 
     var it = self.conns.valueIterator();
 
@@ -73,7 +85,7 @@ pub fn serve(self: *Server) !void {
         const ready_events = try sys.epollWait(self.epfd, &events, -1);
 
         for (ready_events) |ev| {
-            if (isSocketEv(ev)) self.handleSocketEv() else try self.handleConnEv(ev);
+            if (isSocketEv(ev)) self.handleSocketEv() else if (isKeepAliveTimerEv(ev)) try self.handleKeepAliveTimerEv() else try self.handleConnEv(ev);
         }
     }
 }
@@ -113,6 +125,32 @@ fn handleSocketEv(self: *Server) void {
             sys.close(accepted.fd);
             self.alloc.destroy(conn);
         };
+    }
+}
+
+fn handleKeepAliveTimerEv(self: *Server) !void {
+    _ = try sys.timerfdRead(self.timerfd);
+
+    var iter = self.conns.valueIterator();
+
+    const now = Timestamp.now(self.io, .awake).nanoseconds;
+
+    while (iter.next()) |conn| {
+        if (conn.*.keep_alive == 0 or conn.*.last_packet_at == 0) continue;
+        // spec says 1.5 the keep alive time
+        // look up int/float conversion.
+        const keep_alive = conn.*.keep_alive;
+
+        const since_ns = now - conn.*.last_packet_at;
+        const seconds_since = @divFloor(since_ns, std.time.ns_per_s);
+
+        // since * 2 > ka * 3 is since > 1.5 * ka without floats.
+        if (since_ns * 2 > @as(u64, keep_alive) * std.time.ns_per_s * 3) {
+            log.debug("Droppig connection keep alive timeput client id: {s} fd: {d}, keep-alive: {d}. duration: {d}", .{ conn.*.clientId(), conn.*.fd, keep_alive, seconds_since });
+            // closeConn would remove from conns mid-iteration. The EOF from
+            // shutdown closes it through handleConnEv instead.
+            sys.shutdown(conn.*.fd);
+        }
     }
 }
 
@@ -189,4 +227,8 @@ fn destroyConn(self: *Server, conn: *Conn) void {
 
 fn isSocketEv(ev: EpollEvent) bool {
     return ev.data.ptr == 0;
+}
+
+fn isKeepAliveTimerEv(ev: EpollEvent) bool {
+    return ev.data.ptr == 1;
 }

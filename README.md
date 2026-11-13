@@ -14,7 +14,7 @@ common flows of the spec, without TLS, clustering or MQTT 5.
 - [x] Takeover: a second CONNECT with the same client ID closes the first
 - [x] PINGREQ / PINGRESP
 - [x] DISCONNECT
-- [ ] Keep-alive: close a client silent for 1.5x its keep-alive
+- [x] Keep-alive: close a client silent for 1.5x its keep-alive
 - [ ] Will message: store on CONNECT, publish on abnormal close, drop on DISCONNECT
 - [ ] Packets larger than the 16KB input buffer
 
