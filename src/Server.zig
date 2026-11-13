@@ -188,7 +188,7 @@ fn handleConnEv(self: *Server, ev: EpollEvent) !void {
         const packet_len = header.packetLen();
         // TODO grow the buffer to fit up to the max mqtt packet size.
         if (packet_len > conn.in_buf.len) return error.PacketTooLarge;
-        //
+
         // havent received the full packet yet
         if (conn.in_len < packet_len) break;
 
