@@ -204,6 +204,56 @@ pub fn epollWait(epfd: fd_t, events: []EpollEvent, timeout_ms: i32) error{Unexpe
     };
 }
 
+// ---- timerfd ----
+
+pub const TimerfdCreateError = error{ TooManyOpenFiles, Unexpected };
+
+/// A non-blocking timer on CLOCK_MONOTONIC. It becomes readable when it
+/// fires. Starts disarmed, see timerfdSet.
+pub fn timerfdCreate() TimerfdCreateError!fd_t {
+    const rc = linux.timerfd_create(.MONOTONIC, .{ .NONBLOCK = true });
+    return switch (linux.errno(rc)) {
+        .SUCCESS => @intCast(rc),
+        .MFILE, .NFILE => error.TooManyOpenFiles,
+        else => |err| unexpected(err),
+    };
+}
+
+/// Fires `value_ns` from now, then every `interval_ns`. A zero interval
+/// fires once, a zero value disarms the timer.
+pub fn timerfdSet(fd: fd_t, value_ns: u64, interval_ns: u64) error{Unexpected}!void {
+    const spec: linux.itimerspec = .{
+        .it_value = toTimespec(value_ns),
+        .it_interval = toTimespec(interval_ns),
+    };
+    const rc = linux.timerfd_settime(fd, .{}, &spec, null);
+    return switch (linux.errno(rc)) {
+        .SUCCESS => {},
+        else => |err| unexpected(err),
+    };
+}
+
+pub const TimerfdReadError = error{ WouldBlock, Unexpected };
+
+/// Returns how many times the timer fired since the last read. epoll keeps
+/// reporting the fd until it's read.
+pub fn timerfdRead(fd: fd_t) TimerfdReadError!u64 {
+    var count: u64 = undefined;
+    const rc = linux.read(fd, std.mem.asBytes(&count), @sizeOf(u64));
+    return switch (linux.errno(rc)) {
+        .SUCCESS => count,
+        .AGAIN => error.WouldBlock,
+        else => |err| unexpected(err),
+    };
+}
+
+fn toTimespec(ns: u64) linux.timespec {
+    return .{
+        .sec = @intCast(ns / std.time.ns_per_s),
+        .nsec = @intCast(ns % std.time.ns_per_s),
+    };
+}
+
 /// Closing an fd also removes it from epoll.
 pub fn close(fd: fd_t) void {
     // The fd is released even when close fails, so there's nothing to retry.
@@ -220,4 +270,23 @@ pub fn shutdown(fd: fd_t) void {
 fn unexpected(err: linux.E) error{Unexpected} {
     log.err("unexpected errno: {t}", .{err});
     return error.Unexpected;
+}
+
+test "timerfd fires and counts expirations" {
+    const fd = try timerfdCreate();
+    defer close(fd);
+
+    try std.testing.expectError(error.WouldBlock, timerfdRead(fd));
+
+    try timerfdSet(fd, 1, 0);
+
+    var count: u64 = 0;
+    while (count == 0) {
+        count = timerfdRead(fd) catch |err| switch (err) {
+            error.WouldBlock => 0,
+            else => return err,
+        };
+    }
+
+    try std.testing.expectEqual(1, count);
 }

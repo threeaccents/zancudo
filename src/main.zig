@@ -20,4 +20,5 @@ pub fn main(init: std.process.Init) !void {
 test {
     _ = @import("mqtt.zig");
     _ = @import("Session.zig");
+    _ = @import("sys.zig");
 }
