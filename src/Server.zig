@@ -75,14 +75,12 @@ pub fn serve(self: *Server) !void {
         const ready_events = try sys.epollWait(self.epfd, &events, -1);
 
         for (ready_events) |ev| {
-            if (isSocketEv(ev)) self.handleSocketEv(ev) else try self.handleConnEv(ev);
+            if (isSocketEv(ev)) self.handleSocketEv() else try self.handleConnEv(ev);
         }
     }
 }
 
-fn handleSocketEv(self: *Server, ev: EpollEvent) void {
-    _ = ev;
-
+fn handleSocketEv(self: *Server) void {
     while (true) {
         const accepted = sys.accept(self.fd, linux.SOCK.NONBLOCK) catch |err| switch (err) {
             // no pending connections
