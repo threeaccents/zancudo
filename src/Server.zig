@@ -60,10 +60,8 @@ pub fn deinit(self: *Server) void {
 
     var it = self.conns.valueIterator();
 
-    while (it.next()) |conn| {
-        sys.close(conn.*.fd);
-        self.alloc.destroy(conn.*);
-    }
+    // destroyConn, not closeConn: removing from conns would invalidate `it`.
+    while (it.next()) |conn| self.destroyConn(conn.*);
 
     self.conns.deinit(self.alloc);
 }
@@ -178,6 +176,11 @@ fn handleConnEv(self: *Server, ev: EpollEvent) !void {
 
 fn closeConn(self: *Server, conn: *Conn) void {
     _ = self.conns.remove(conn.fd);
+    self.destroyConn(conn);
+}
+
+/// closeConn without removing from conns.
+fn destroyConn(self: *Server, conn: *Conn) void {
     log.info("client fd = {d} disconnected", .{conn.fd});
     self.broker.removeConn(conn);
     sys.close(conn.fd);
