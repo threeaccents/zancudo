@@ -15,7 +15,7 @@ common flows of the spec, without TLS, clustering or MQTT 5.
 - [x] PINGREQ / PINGRESP
 - [x] DISCONNECT
 - [x] Keep-alive: close a client silent for 1.5x its keep-alive
-- [ ] Will message: store on CONNECT, publish on abnormal close, drop on DISCONNECT
+- [x] Will message: store on CONNECT, publish on abnormal close, drop on DISCONNECT
 - [ ] Packets larger than the 16KB input buffer
 
 ### Subscriptions
