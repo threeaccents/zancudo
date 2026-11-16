@@ -103,6 +103,10 @@ fn handlePublish(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void 
 
     const p = Publish.decode(flags, body) catch return error.Malformed;
 
+    try self.publish(p);
+}
+
+fn publish(self: *Broker, p: Publish) !void {
     var buf: [16 * 1024]TopicTrie.Subscriber = undefined;
     const subscribers = try self.subscriptions.match(p.topic, &buf);
 
