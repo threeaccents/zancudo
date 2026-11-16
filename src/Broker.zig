@@ -18,6 +18,7 @@ const Publish = mqtt.Publish;
 const SubAck = mqtt.SubAck;
 const Subscribe = mqtt.Subscribe;
 const TopicTrie = mqtt.TopicTrie;
+const Will = Connect.Will;
 
 const log = std.log.scoped(.broker);
 
@@ -58,7 +59,6 @@ pub fn handlePacket(self: *Broker, conn: *Conn, header: FixedHeader, body: []con
 
 /// A refused client gets a CONNACK before it's closed. A malformed CONNECT
 /// gets none.
-// TODO: keep connect.will once PUBLISH exists.
 // TODO: check connect.username and connect.password once there's auth.
 fn handleConnect(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void {
     if (conn.connected) return error.ProtocolViolation;
@@ -84,6 +84,9 @@ fn handleConnect(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void 
 
     conn.keep_alive = connect.keep_alive;
     conn.connected = true;
+
+    if (connect.will) |will| try self.storeWill(conn, will);
+    errdefer self.dropWill(conn);
 
     try self.appendConn(conn);
 
@@ -167,10 +170,9 @@ fn handlePingReq(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void 
 }
 
 fn handleDisconnect(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void {
-    _ = self;
-
     if (flags != 0 or body.len != 0) return error.Malformed;
 
+    self.dropWill(conn);
     conn.closing = true;
 }
 
@@ -191,6 +193,46 @@ pub fn removeConn(self: *Broker, conn: *Conn) void {
             }
         }
     }
+
+    self.publishWill(conn);
+}
+
+fn storeWill(self: *Broker, conn: *Conn, will: Will) !void {
+    var owned = will;
+
+    owned.message = try self.alloc.dupe(u8, owned.message);
+    errdefer self.alloc.free(owned.message);
+
+    owned.topic = try self.alloc.dupe(u8, owned.topic);
+
+    conn.will = owned;
+}
+
+fn publishWill(self: *Broker, conn: *Conn) void {
+    const will = conn.will orelse return;
+    defer self.dropWill(conn);
+
+    log.info("publishing will of {s} to {s}", .{ conn.clientId(), will.topic });
+
+    const p: Publish = .{
+        .qos = will.qos,
+        .dup = false,
+        .retain = will.retain,
+        .topic = will.topic,
+        .payload = will.message,
+    };
+
+    self.publish(p) catch |err| {
+        log.err("Failed to publish will. topic {s} client id {s}. Error: {t}", .{ will.topic, conn.clientId(), err });
+    };
+}
+
+fn dropWill(self: *Broker, conn: *Conn) void {
+    const will = conn.will orelse return;
+
+    self.alloc.free(will.topic);
+    self.alloc.free(will.message);
+    conn.will = null;
 }
 
 fn removeSession(self: *Broker, client_id: []const u8) void {

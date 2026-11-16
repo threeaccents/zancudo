@@ -9,6 +9,7 @@ const linux = std.os.linux;
 const Ip4Address = sys.Ip4Address;
 const Writer = mqtt.Writer;
 const Timestamp = std.Io.Timestamp;
+const Will = mqtt.Connect.Will;
 
 /// MQTT 3.1.1 only requires servers to accept client IDs up to 23 bytes.
 pub const max_client_id_len = 23;
@@ -50,6 +51,8 @@ epoll_out_on: bool = false,
 
 /// last packet recevied from client. Used for keep-alive
 last_packet_at: u64 = 0,
+
+will: ?Will = null,
 
 // reads data coming in and sets it to its internal buffer
 pub fn read(self: *Conn) !void {
