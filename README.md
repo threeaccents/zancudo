@@ -16,6 +16,7 @@ common flows of the spec, without TLS, clustering or MQTT 5.
 - [x] DISCONNECT
 - [x] Keep-alive: close a client silent for 1.5x its keep-alive
 - [x] Will message: store on CONNECT, publish on abnormal close, drop on DISCONNECT
+- [ ] Reject a CONNECT whose will topic is empty or has wildcards
 - [ ] Packets larger than the 16KB input buffer
 
 ### Subscriptions
@@ -33,6 +34,7 @@ common flows of the spec, without TLS, clustering or MQTT 5.
 - [ ] Deliver at min(publish QoS, subscription QoS)
 - [ ] Clear DUP and RETAIN on messages forwarded to subscribers
 - [ ] Retained messages: keep the last one per topic, empty payload clears it
+- [ ] A will with Will Retain set becomes its topic's retained message
 - [ ] Send retained messages on SUBSCRIBE
 
 ### QoS 1
