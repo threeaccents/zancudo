@@ -17,6 +17,8 @@ const PubAck = mqtt.PubAck;
 const Publish = mqtt.Publish;
 const SubAck = mqtt.SubAck;
 const Subscribe = mqtt.Subscribe;
+const Unsubscribe = mqtt.Unsubscribe;
+const UnsubAck = mqtt.UnsubAck;
 const TopicTrie = mqtt.TopicTrie;
 const Will = Connect.Will;
 const packet = mqtt.packet;
@@ -51,6 +53,7 @@ pub fn handlePacket(self: *Broker, conn: *Conn, header: FixedHeader, body: []con
         .disconnect => try self.handleDisconnect(conn, header.flags, body),
         .pingreq => try self.handlePingReq(conn, header.flags, body),
         .subscribe => try self.handleSubscribe(conn, header.flags, body),
+        .unsubscribe => try self.handleUnsubscribe(conn, header.flags, body),
         .publish => try self.handlePublish(conn, header.flags, body),
         else => {
             return error.PacketTypeNotImplementedYet;
@@ -162,6 +165,24 @@ fn handleSubscribe(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !voi
     }
 
     const ack: SubAck = .{ .packet_id = sub.packet_id, .filter_codes = filter_codes.items };
+
+    try sess.sendMsg(ack);
+}
+
+fn handleUnsubscribe(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void {
+    if (flags != 0x02) return error.Malformed;
+
+    const sess = self.sessions.get(conn.clientId()) orelse return error.SessionNotFound;
+
+    var filters: [32][]const u8 = undefined;
+
+    const unsub = try Unsubscribe.decode(body, &filters);
+
+    for (unsub.filters) |filter| {
+        self.subscriptions.unsubscribe(self.alloc, filter, conn.clientId());
+    }
+
+    const ack: UnsubAck = .{ .packet_id = unsub.packet_id };
 
     try sess.sendMsg(ack);
 }

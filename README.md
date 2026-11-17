@@ -28,7 +28,7 @@ MQTT 5.
 - [x] SUBSCRIBE / SUBACK
 - [x] Topic trie with `+` and `#` wildcards
 - [x] `$` topics don't match wildcards at the first level
-- [ ] UNSUBSCRIBE / UNSUBACK
+- [x] UNSUBSCRIBE / UNSUBACK
 - [x] SUBACK failure code (0x80) for an invalid filter instead of closing the client
 
 ### Publish
