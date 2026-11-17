@@ -17,6 +17,8 @@ pub const Publish = packet.Publish;
 pub const QoS = packet.QoS;
 pub const SubAck = packet.SubAck;
 pub const Subscribe = packet.Subscribe;
+pub const Unsubscribe = packet.Unsubscribe;
+pub const UnsubAck = packet.UnsubAck;
 
 test {
     @import("std").testing.refAllDecls(@This());

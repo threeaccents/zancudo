@@ -9,6 +9,7 @@ pub const Publish = @import("packet/Publish.zig");
 pub const SubAck = @import("packet/SubAck.zig");
 pub const Subscribe = @import("packet/Subscribe.zig");
 pub const Unsubscribe = @import("packet/Unsubscribe.zig");
+pub const UnsubAck = @import("packet/UnsubAck.zig");
 
 pub const PacketType = enum(u4) {
     connect = 1,
@@ -38,14 +39,14 @@ pub const Packet = union(PacketType) {
     connect: Connect,
     connack: ConnAck,
     publish: Publish,
-    puback: void, // TODO
+    puback: PubAck,
     pubrec: void, // TODO
     pubrel: void, // TODO
     pubcomp: void, // TODO
     subscribe: Subscribe,
     suback: SubAck,
     unsubscribe: Unsubscribe,
-    unsuback: void, // TODO
+    unsuback: UnsubAck,
     pingreq: void,
     pingresp: PingResp,
     disconnect: void,
