@@ -2,8 +2,8 @@
 
 An MQTT 3.1.1 broker written in Zig.
 
-I started this project mainly to learn Zig and to stay sane in the age of AI. All the code is written with my bare hands 🤯.
-I have used AI to understand the MQTT protocol better and to review some piece of code I'm unsure about.
+I started this project mainly to learn Zig and to stay sane in the age of AI. All the code is written with my bare hands (I know what a psycho).
+I haven't been 100% AI free though. I used it to better understand the MQTT protocol and generate the roadmap you see in this readme.
 
 I'm using this broker for my farm. This is not meant to be a bullet proof mqtt broker more like a fun side project.
 Now that I've gotten decently far I do want to finish implementing the 3.1.1 protocol. Perhaps even start implementing 
