@@ -1,9 +1,13 @@
-# zancudo
+# Zancudo
 
-An MQTT 3.1.1 broker written in Zig, built on Linux epoll.
+An MQTT 3.1.1 broker written in Zig.
 
-The goal is a respectable broker, not a bulletproof one: correct for the
-common flows of the spec, without TLS, clustering or MQTT 5.
+I started this project mainly to learn Zig and to stay sane in the age of AI. All the code is written with my bare hands 🤯.
+I have used AI to understand the MQTT protocol better and to review some piece of code I'm unsure about.
+
+I'm using this broker for my farm. This is not meant to be a bullet proof mqtt broker more like a fun side project.
+Now that I've gotten decently far I do want to finish implementing the 3.1.1 protocol. Perhaps even start implementing 
+MQTT 5.
 
 ## Roadmap
 
@@ -74,5 +78,4 @@ common flows of the spec, without TLS, clustering or MQTT 5.
 
 - [ ] Persist sessions and queues across restarts (Fqueue)
 - [ ] Bitcask-inspired KV store for inflight messages
-- [ ] MQTT over WebSocket
 - [ ] Username / password auth
