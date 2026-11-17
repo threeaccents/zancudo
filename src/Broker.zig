@@ -19,6 +19,7 @@ const SubAck = mqtt.SubAck;
 const Subscribe = mqtt.Subscribe;
 const TopicTrie = mqtt.TopicTrie;
 const Will = Connect.Will;
+const packet = mqtt.packet;
 
 const log = std.log.scoped(.broker);
 
@@ -140,13 +141,15 @@ fn handleSubscribe(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !voi
 
     const sub = try Subscribe.decode(body, &topics);
 
-    for (sub.topics) |topic| {
-        try self.subscriptions.subscribe(self.alloc, topic.filter, conn.clientId(), topic.qos);
-    }
-
     var buf: [32]SubAck.ReturnCode = undefined;
     var filter_codes: std.ArrayList(SubAck.ReturnCode) = .initBuffer(&buf);
+
     for (sub.topics) |topic| {
+        if (!packet.validFilter(topic.filter)) {
+            try filter_codes.appendBounded(.failure);
+            continue;
+        }
+
         const code: SubAck.ReturnCode = switch (topic.qos) {
             .at_least_once => .granted_qos1,
             .at_most_once => .granted_qos0,
@@ -154,9 +157,12 @@ fn handleSubscribe(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !voi
         };
 
         try filter_codes.appendBounded(code);
+
+        try self.subscriptions.subscribe(self.alloc, topic.filter, conn.clientId(), topic.qos);
     }
 
     const ack: SubAck = .{ .packet_id = sub.packet_id, .filter_codes = filter_codes.items };
+
     try sess.sendMsg(ack);
 }
 

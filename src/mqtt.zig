@@ -1,7 +1,7 @@
 //! MQTT 3.1.1 packets and subscriptions. Works on plain bytes, with no
 //! sockets or I/O.
 
-const packet = @import("mqtt/packet.zig");
+pub const packet = @import("mqtt/packet.zig");
 
 pub const FixedHeader = @import("mqtt/FixedHeader.zig");
 pub const Reader = @import("mqtt/Reader.zig");

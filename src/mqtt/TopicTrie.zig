@@ -29,8 +29,6 @@ pub fn deinit(self: *TopicTrie, alloc: Allocator) void {
 /// Subscribe a client to a filter. Subscribing again to the same filter
 /// only updates the QoS.
 pub fn subscribe(self: *TopicTrie, alloc: Allocator, filter: []const u8, client_id: []const u8, qos: QoS) !void {
-    if (!validFilter(filter)) return error.InvalidFilter;
-
     var levels = std.mem.splitScalar(u8, filter, '/');
 
     var node = &self.root;
@@ -132,22 +130,6 @@ fn rmSub(alloc: Allocator, node: *Node, client_id: []const u8) void {
     }
 }
 
-/// "#" is only valid as the whole last level and "+" only as a whole level.
-fn validFilter(filter: []const u8) bool {
-    if (filter.len == 0) return false;
-
-    var levels = std.mem.splitScalar(u8, filter, '/');
-    while (levels.next()) |level| {
-        if (std.mem.indexOfScalar(u8, level, '#') != null) {
-            // Nothing can follow "#", not even an empty level.
-            if (level.len != 1 or levels.peek() != null) return false;
-        }
-        if (std.mem.indexOfScalar(u8, level, '+') != null and level.len != 1) return false;
-    }
-
-    return true;
-}
-
 /// Frees everything a node owns, but not the node itself.
 fn deinitNode(node: *Node, alloc: Allocator) void {
     for (node.children.keys(), node.children.values()) |key, child| {
@@ -180,18 +162,6 @@ test "TopicTrie: subscribe" {
     try testing.expectEqual(1, b.subscribers.items.len);
     try testing.expectEqualStrings("c1", b.subscribers.items[0].client_id);
     try testing.expectEqual(.exactly_once, b.subscribers.items[0].qos);
-}
-
-test "TopicTrie: subscribe rejects invalid filters" {
-    const testing = std.testing;
-    const alloc = testing.allocator;
-
-    var trie: TopicTrie = .{};
-    defer trie.deinit(alloc);
-
-    try testing.expectError(error.InvalidFilter, trie.subscribe(alloc, "a/b#", "c1", .at_most_once));
-    try testing.expectError(error.InvalidFilter, trie.subscribe(alloc, "a/#/c", "c1", .at_most_once));
-    try testing.expectError(error.InvalidFilter, trie.subscribe(alloc, "a+/c", "c1", .at_most_once));
 }
 
 test "TopicTrie: match" {

@@ -1,4 +1,5 @@
 //! Types shared by every packet, and one struct per packet type in packet/.
+const std = @import("std");
 
 pub const ConnAck = @import("packet/ConnAck.zig");
 pub const Connect = @import("packet/Connect.zig");
@@ -48,6 +49,37 @@ pub const Packet = union(PacketType) {
     pingresp: PingResp,
     disconnect: void,
 };
+
+/// "#" is only valid as the whole last level and "+" only as a whole level.
+pub fn validFilter(filter: []const u8) bool {
+    if (filter.len == 0) return false;
+
+    var levels = std.mem.splitScalar(u8, filter, '/');
+    while (levels.next()) |level| {
+        if (std.mem.indexOfScalar(u8, level, '#') != null) {
+            // Nothing can follow "#", not even an empty level.
+            if (level.len != 1 or levels.peek() != null) return false;
+        }
+        if (std.mem.indexOfScalar(u8, level, '+') != null and level.len != 1) return false;
+    }
+
+    return true;
+}
+
+test "validFilter" {
+    const testing = std.testing;
+
+    try testing.expect(validFilter("a/b"));
+    try testing.expect(validFilter("a/+/c"));
+    try testing.expect(validFilter("a/#"));
+    try testing.expect(validFilter("#"));
+
+    try testing.expect(!validFilter(""));
+    try testing.expect(!validFilter("a/b#"));
+    try testing.expect(!validFilter("a+/c"));
+    try testing.expect(!validFilter("a/#/c"));
+    try testing.expect(!validFilter("a/#/"));
+}
 
 test {
     @import("std").testing.refAllDecls(@This());
