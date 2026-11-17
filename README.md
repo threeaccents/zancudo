@@ -34,7 +34,7 @@ MQTT 5.
 ### Publish
 
 - [x] Route PUBLISH to matching subscribers
-- [ ] Reject wildcards in PUBLISH topic names
+- [x] Reject wildcards in PUBLISH topic names
 - [ ] Deliver at min(publish QoS, subscription QoS)
 - [ ] Clear DUP and RETAIN on messages forwarded to subscribers
 - [ ] Retained messages: keep the last one per topic, empty payload clears it

@@ -25,7 +25,7 @@ pub fn decode(flags: u4, body: []const u8) !Publish {
     if (dup and qos == .at_most_once) return error.Malformed;
 
     const topic = try r.readString();
-    if (topic.len == 0) return error.Malformed;
+    if (topic.len == 0 or std.mem.indexOfAny(u8, topic, "+#") != null) return error.Malformed;
 
     var packet_id: ?u16 = null;
     if (qos != .at_most_once) {
@@ -90,4 +90,12 @@ test "Publish: decode malformed" {
     try testing.expectError(error.Malformed, decode(0b0000, "\x00\x0021C"));
     // QoS 1 with packet ID 0.
     try testing.expectError(error.Malformed, decode(0b0010, "\x00\x03a/b\x00\x0021C"));
+}
+
+test "Publish: decode rejects wildcards in the topic" {
+    const testing = std.testing;
+
+    try testing.expectError(error.Malformed, decode(0b0000, "\x00\x03a/#21C"));
+    try testing.expectError(error.Malformed, decode(0b0000, "\x00\x03+/b21C"));
+    try testing.expectError(error.Malformed, decode(0b0000, "\x00\x03a+b21C"));
 }
