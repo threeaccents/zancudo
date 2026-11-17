@@ -22,6 +22,7 @@ const UnsubAck = mqtt.UnsubAck;
 const TopicTrie = mqtt.TopicTrie;
 const Will = Connect.Will;
 const packet = mqtt.packet;
+const QoS = mqtt.QoS;
 
 const log = std.log.scoped(.broker);
 
@@ -120,19 +121,27 @@ fn publish(self: *Broker, p: Publish) !void {
     for (subscribers) |s| {
         const sess = self.sessions.get(s.client_id) orelse continue;
 
+        const qos = getMsgQos(p.qos, s.qos);
+
         const pub_packet: Publish = .{
             .dup = p.dup,
             .payload = p.payload,
-            .qos = p.qos,
+            .qos = qos,
             .retain = p.retain,
             .topic = p.topic,
-            .packet_id = if (p.qos != .at_most_once) sess.packetId() else null,
+            .packet_id = if (qos != .at_most_once) sess.packetId() else null,
         };
 
         sess.sendMsg(pub_packet) catch |err| {
             log.err("Failed to send client publish msg. topic {s} client id {s}. Error: {t}", .{ pub_packet.topic, s.client_id, err });
         };
     }
+}
+
+fn getMsgQos(p: QoS, s: QoS) QoS {
+    const min = @min(@backingInt(p), @backingInt(s));
+
+    return std.enums.fromInt(QoS, min).?;
 }
 
 fn handleSubscribe(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void {
