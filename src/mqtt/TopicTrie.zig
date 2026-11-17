@@ -64,6 +64,34 @@ pub fn subscribe(self: *TopicTrie, alloc: Allocator, filter: []const u8, client_
     try node.subscribers.append(alloc, .{ .client_id = id, .qos = qos });
 }
 
+pub fn unsubscribe(self: *TopicTrie, alloc: Allocator, filter: []const u8, client_id: []const u8) void {
+    unsubNode(alloc, &self.root, std.mem.splitScalar(u8, filter, '/'), client_id);
+}
+
+fn unsubNode(alloc: Allocator, node: *Node, levels: std.mem.SplitIterator(u8, .scalar), client_id: []const u8) void {
+    var rest = levels;
+    const level = rest.next() orelse {
+        for (node.subscribers.items, 0..) |sub, i| {
+            if (std.mem.eql(u8, sub.client_id, client_id)) {
+                _ = node.subscribers.swapRemove(i);
+                alloc.free(sub.client_id);
+                break;
+            }
+        }
+        return;
+    };
+
+    const child = node.children.get(level) orelse return;
+    unsubNode(alloc, child, rest, client_id);
+
+    if (child.children.count() != 0 or child.subscribers.items.len != 0) return;
+
+    const kv = node.children.fetchSwapRemove(level).?;
+    alloc.free(kv.key);
+    deinitNode(child, alloc);
+    alloc.destroy(child);
+}
+
 /// Collects the subscribers of every filter matching `topic` into `buf`. A
 /// client with several matching filters is in the result once per filter.
 /// `topic` must not contain wildcards.
@@ -215,4 +243,56 @@ test "TopicTrie: removeSubscriber" {
     const b = a.children.get("b").?;
     try testing.expectEqual(1, b.subscribers.items.len);
     try testing.expectEqualStrings("c2", b.subscribers.items[0].client_id);
+}
+
+test "TopicTrie: unsubscribe prunes empty nodes" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+
+    var trie: TopicTrie = .{};
+    defer trie.deinit(alloc);
+
+    try trie.subscribe(alloc, "a/b/c", "c1", .at_most_once);
+    trie.unsubscribe(alloc, "a/b/c", "c1");
+
+    try testing.expectEqual(0, trie.root.children.count());
+}
+
+test "TopicTrie: unsubscribe keeps nodes still in use" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+
+    var trie: TopicTrie = .{};
+    defer trie.deinit(alloc);
+
+    try trie.subscribe(alloc, "a/b", "c1", .at_most_once);
+    try trie.subscribe(alloc, "a/b/c", "c1", .at_most_once);
+    try trie.subscribe(alloc, "a/b/c", "c2", .at_most_once);
+
+    trie.unsubscribe(alloc, "a/b/c", "c1");
+    var buf: [8]Subscriber = undefined;
+    try testing.expectEqual(1, (try trie.match("a/b/c", &buf)).len);
+
+    trie.unsubscribe(alloc, "a/b/c", "c2");
+    const b = trie.root.children.get("a").?.children.get("b").?;
+    try testing.expectEqual(0, b.children.count());
+    try testing.expectEqual(1, b.subscribers.items.len);
+}
+
+test "TopicTrie: unsubscribe without a match changes nothing" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+
+    var trie: TopicTrie = .{};
+    defer trie.deinit(alloc);
+
+    try trie.subscribe(alloc, "a/b", "c1", .at_most_once);
+
+    trie.unsubscribe(alloc, "x/y", "c1");
+    trie.unsubscribe(alloc, "a/b", "c2");
+    trie.unsubscribe(alloc, "a", "c1");
+    trie.unsubscribe(alloc, "a/+", "c1");
+
+    var buf: [8]Subscriber = undefined;
+    try testing.expectEqual(1, (try trie.match("a/b", &buf)).len);
 }
