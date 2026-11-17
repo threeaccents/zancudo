@@ -73,6 +73,8 @@ pub fn decode(flags: u4, body: []const u8) !Connect {
     var will: ?Will = null;
     if (will_flag) {
         const will_topic = try r.readString();
+        if (will_topic.len == 0 or std.mem.indexOfAny(u8, will_topic, "+#") != null) return error.Malformed;
+
         const will_msg = try r.readString();
 
         will = .{
@@ -139,4 +141,7 @@ test "Connect: decode malformed" {
     try testing.expectError(error.Malformed, decode(0, "\x00\x04MQTT\x04\x03\x00\x3C\x00\x03abc"));
     // Bytes left over after the payload.
     try testing.expectError(error.Malformed, decode(0, "\x00\x04MQTT\x04\x02\x00\x3C\x00\x03abcJUNK"));
+    try testing.expectError(error.Malformed, decode(0, "\x00\x04MQTT\x04\x06\x00\x3C\x00\x03abc\x00\x00\x00\x03bye"));
+    try testing.expectError(error.Malformed, decode(0, "\x00\x04MQTT\x04\x06\x00\x3C\x00\x03abc\x00\x03a/#\x00\x03bye"));
+    try testing.expectError(error.Malformed, decode(0, "\x00\x04MQTT\x04\x06\x00\x3C\x00\x03abc\x00\x03+/b\x00\x03bye"));
 }

@@ -16,7 +16,7 @@ common flows of the spec, without TLS, clustering or MQTT 5.
 - [x] DISCONNECT
 - [x] Keep-alive: close a client silent for 1.5x its keep-alive
 - [x] Will message: store on CONNECT, publish on abnormal close, drop on DISCONNECT
-- [ ] Reject a CONNECT whose will topic is empty or has wildcards
+- [x] Reject a CONNECT whose will topic is empty or has wildcards
 - [ ] Packets larger than the 16KB input buffer
 
 ### Subscriptions
