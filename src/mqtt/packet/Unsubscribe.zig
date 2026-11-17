@@ -35,7 +35,6 @@ test "Unsubscribe: decode" {
 
     var buf: [8][]const u8 = undefined;
 
-    // Packet ID 1: "test" at QoS 0, then "a/b" at QoS 1.
     const unsub = try decode("\x00\x01\x00\x04test\x00\x02hi", &buf);
     try testing.expectEqual(1, unsub.packet_id);
     try testing.expectEqual(2, unsub.filters.len);
