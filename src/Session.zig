@@ -13,6 +13,7 @@ const Deque = std.Deque;
 const log = std.log.scoped(.session);
 
 const max_inflight_msgs = 50;
+const max_queue_len = 1000;
 
 // null means the client is offline.
 conn: ?*Conn,
@@ -126,7 +127,7 @@ pub fn packetId(self: *Session) u16 {
 }
 
 pub fn appendQueuedMsg(self: *Session, msg: Publish) !void {
-    if (self.queued_msgs.len >= 500) return error.OutOfSpace;
+    if (self.queued_msgs.len >= max_queue_len) return error.OutOfSpace;
 
     var owned = msg;
 
