@@ -59,12 +59,12 @@ MQTT 5.
 - [x] Queue messages for offline clients
 - [x] Resend unacked messages with DUP=1 on resume
 - [ ] Keep a queued message when its send fails
-- [ ] Draining the queue respects the inflight limit
 
 ### Bugs and cleanup
 
 - [ ] `conns` key dangles after a takeover (Broker.appendConn)
 - [ ] Accept error paths don't undo earlier steps (Server.handleSocketEv)
+- [ ] Draining the queue ignores the inflight limit and hits `unreachable` past 50 (Session.drainQueuedMsgs)
 - [ ] Broker.deinit frees sessions, conns and subscriptions
 - [ ] Shut down cleanly on SIGINT / SIGTERM
 
