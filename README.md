@@ -9,7 +9,7 @@ For now it only works on Linux.
 I started this project mainly to learn Zig and to stay sane in the age of AI. 98% of the code is written with my bare hands.
 It currently passes Paho's client test suite and I'm using it to build a "smart farm". 
 
-If the motivations remains I want to implement MQTT protocol and add kqeueue support so I can run this on Mac.
+If the motivations remains I want to implement MQTT 5 protocol and add kqeueue support so I can run this on Mac.
 
 ## Roadmap
 
