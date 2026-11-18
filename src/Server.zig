@@ -13,6 +13,8 @@ const FixedHeader = mqtt.FixedHeader;
 const Timestamp = std.Io.Timestamp;
 const Io = std.Io;
 
+const EvSource = enum(usize) { listener = 0, timer = 1, signal = 2, _ };
+
 // socket fd
 fd: sys.fd_t,
 // epoll fd
@@ -46,14 +48,14 @@ pub fn init(
 
     const epfd = try sys.epollCreate();
     // data.ptr = 0 marks the listener, since no Conn lives at address 0.
-    try sys.epollAdd(epfd, socket_fd, linux.EPOLL.IN, .{ .ptr = 0 });
+    try sys.epollAdd(epfd, socket_fd, linux.EPOLL.IN, .{ .ptr = @backingInt(EvSource.listener) });
 
     const timerfd = try sys.timerfdCreate();
-    try sys.epollAdd(epfd, timerfd, linux.EPOLL.IN, .{ .ptr = 1 });
+    try sys.epollAdd(epfd, timerfd, linux.EPOLL.IN, .{ .ptr = @backingInt(EvSource.timer) });
     try sys.timerfdSet(timerfd, std.time.ns_per_s, std.time.ns_per_s);
 
     const signalfd = try sys.signalfdCreate(&.{ .INT, .TERM });
-    try sys.epollAdd(epfd, signalfd, linux.EPOLL.IN, .{ .ptr = 2 });
+    try sys.epollAdd(epfd, signalfd, linux.EPOLL.IN, .{ .ptr = @backingInt(EvSource.signal) });
 
     log.info("listening on {f}", .{addr});
 
@@ -91,13 +93,16 @@ pub fn serve(self: *Server) !void {
         const ready_events = try sys.epollWait(self.epfd, &events, -1);
 
         for (ready_events) |ev| {
-            if (isSignalEv(ev)) {
-                const sig = try sys.signalfdRead(self.signalfd);
-                log.info("received {t}, shutting down", .{sig});
-                return;
+            switch (@as(EvSource, @fromBackingInt(ev.data.ptr))) {
+                .listener => self.handleSocketEv(),
+                .timer => try self.handleKeepAliveTimerEv(),
+                .signal => {
+                    const sig = try sys.signalfdRead(self.signalfd);
+                    log.info("received {t}, shutting down", .{sig});
+                    return;
+                },
+                _ => try self.handleConnEv(ev),
             }
-
-            if (isSocketEv(ev)) self.handleSocketEv() else if (isKeepAliveTimerEv(ev)) try self.handleKeepAliveTimerEv() else try self.handleConnEv(ev);
         }
     }
 }
@@ -241,16 +246,4 @@ fn destroyConn(self: *Server, conn: *Conn) void {
     self.broker.removeConn(conn);
     sys.close(conn.fd);
     self.alloc.destroy(conn);
-}
-
-fn isSocketEv(ev: EpollEvent) bool {
-    return ev.data.ptr == 0;
-}
-
-fn isKeepAliveTimerEv(ev: EpollEvent) bool {
-    return ev.data.ptr == 1;
-}
-
-fn isSignalEv(ev: EpollEvent) bool {
-    return ev.data.ptr == 2;
 }
