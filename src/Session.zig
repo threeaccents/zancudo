@@ -89,6 +89,11 @@ fn sendPublish(self: *Session, msg: Publish) !void {
 
     var conn = self.conn.?;
 
+    if (self.queued_msgs.len > 0) {
+        try self.appendQueuedMsg(msg);
+        return self.drainQueuedMsgs();
+    }
+
     if (msg.qos == .at_least_once or msg.qos == .exactly_once) {
         if (self.inflight_msgs.count() >= max_inflight_msgs) {
             // inflight buffer full so just queue the msg
@@ -131,11 +136,15 @@ pub fn appendQueuedMsg(self: *Session, msg: Publish) !void {
 pub fn drainQueuedMsgs(self: *Session) !void {
     if (self.conn == null) return error.ClientOffline;
 
-    while (self.queued_msgs.popFront()) |msg| {
+    while (self.queued_msgs.front()) |msg| {
+        if (msg.qos != .at_most_once and self.inflight_msgs.count() >= max_inflight_msgs) return;
+
         self.conn.?.send(msg) catch |err| {
             log.err("failed to send msg [{s}] [{?d}]. error {t}", .{ msg.topic, msg.packet_id, err });
-            return self.queued_msgs.pushFront(self.alloc, msg);
+            return;
         };
+
+        _ = self.queued_msgs.popFront();
 
         if (msg.qos != .at_most_once) try self.appendInflightMsg(msg);
 
@@ -277,4 +286,38 @@ test "sendPublish qos 1/2 gets added to the inflight queue" {
 
     try std.testing.expectEqual(1, sess.inflight_msgs.count());
     try std.testing.expectEqual(msg.packet_id, sess.inflight_msgs.values()[0].packet_id);
+}
+
+test "queued msgs move into inflight in order as slots free up" {
+    const allocator = std.testing.allocator;
+    const fds = try sys.socketpair(linux.AF.UNIX, linux.SOCK.STREAM, 0);
+    defer sys.close(fds[0]);
+    defer sys.close(fds[1]);
+
+    var conn: Conn = .{ .fd = fds[0], .epfd = 6, .addr = .{
+        .ip = .{ 127, 0, 0, 1 },
+        .port = 4269,
+    } };
+
+    var sess: Session = .{
+        .conn = &conn,
+        .alloc = allocator,
+    };
+    defer sess.deinit();
+
+    for (0..max_inflight_msgs) |n| {
+        try sess.appendInflightMsg(.{ .dup = false, .payload = "p", .topic = "t", .packet_id = @intCast(n + 1), .qos = .at_least_once, .retain = false });
+    }
+
+    // Inflight is full, so the QoS 1 msg waits and the QoS 0 msg can't skip it.
+    try sess.sendPublish(.{ .dup = false, .payload = "p", .topic = "t", .packet_id = 100, .qos = .at_least_once, .retain = false });
+    try sess.sendPublish(.{ .dup = false, .payload = "p", .topic = "t", .qos = .at_most_once, .retain = false });
+    try std.testing.expectEqual(2, sess.queued_msgs.len);
+
+    sess.removeInflightMsg(1);
+    try sess.drainQueuedMsgs();
+
+    try std.testing.expectEqual(0, sess.queued_msgs.len);
+    try std.testing.expectEqual(max_inflight_msgs, sess.inflight_msgs.count());
+    try std.testing.expect(sess.inflight_msgs.contains(100));
 }

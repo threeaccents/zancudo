@@ -47,7 +47,7 @@ MQTT 5.
 
 - [x] PUBACK to the publisher
 - [x] Handle PUBACK from a subscriber and free its inflight slot
-- [ ] Move queued messages into inflight when a slot frees up
+- [x] Move queued messages into inflight when a slot frees up
 
 ### QoS 2
 
@@ -66,7 +66,7 @@ MQTT 5.
 
 - [ ] `conns` key dangles after a takeover (Broker.appendConn)
 - [ ] Accept error paths don't undo earlier steps (Server.handleSocketEv)
-- [ ] Draining the queue ignores the inflight limit and hits `unreachable` past 50 (Session.drainQueuedMsgs)
+- [x] Draining the queue ignores the inflight limit and hits `unreachable` past 50 (Session.drainQueuedMsgs)
 - [ ] Broker.deinit frees sessions, conns and subscriptions
 - [ ] Shut down cleanly on SIGINT / SIGTERM
 

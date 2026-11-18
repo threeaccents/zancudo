@@ -118,6 +118,8 @@ fn handlePubAck(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void {
     const ack = PubAck.decode(body) catch return error.Malformed;
 
     sess.removeInflightMsg(ack.packet_id);
+
+    try sess.drainQueuedMsgs();
 }
 
 fn handlePublish(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void {
