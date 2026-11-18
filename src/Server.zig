@@ -129,12 +129,14 @@ fn handleSocketEv(self: *Server) void {
         self.conns.put(self.alloc, conn.fd, conn) catch |err| {
             log.err("failed to append conn to conn list: {t}", .{err});
             sys.close(accepted.fd);
+            self.alloc.destroy(conn);
             continue;
         };
 
         sys.epollAdd(self.epfd, accepted.fd, linux.EPOLL.IN, .{ .ptr = @intFromPtr(conn) }) catch |err| {
             log.err("epoll add client failed: {t}", .{err});
             sys.close(accepted.fd);
+            _ = self.conns.remove(conn.fd);
             self.alloc.destroy(conn);
         };
     }
