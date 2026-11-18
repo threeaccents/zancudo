@@ -14,6 +14,9 @@ const Connect = mqtt.Connect;
 const FixedHeader = mqtt.FixedHeader;
 const PingResp = mqtt.PingResp;
 const PubAck = mqtt.PubAck;
+const PubRel = mqtt.PubRel;
+const PubComp = mqtt.PubComp;
+const PubRec = mqtt.PubRec;
 const Publish = mqtt.Publish;
 const SubAck = mqtt.SubAck;
 const Subscribe = mqtt.Subscribe;
@@ -60,6 +63,7 @@ pub fn handlePacket(self: *Broker, conn: *Conn, header: FixedHeader, body: []con
         .unsubscribe => try self.handleUnsubscribe(conn, header.flags, body),
         .publish => try self.handlePublish(conn, header.flags, body),
         .puback => try self.handlePubAck(conn, header.flags, body),
+        .pubrel => try self.handlePubRel(conn, header.flags, body),
         else => {
             return error.PacketTypeNotImplementedYet;
         },
@@ -123,6 +127,20 @@ fn handlePubAck(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void {
     try sess.drainQueuedMsgs();
 }
 
+fn handlePubRel(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void {
+    if (flags != 0b0010) return error.Malformed;
+
+    const sess = self.sessions.get(conn.clientId()) orelse return error.SessionNotFound;
+
+    const rel = PubRel.decode(body) catch return error.Malformed;
+
+    sess.removeInboundPubRelWaitlist(rel.packet_id);
+
+    const ack: PubComp = .{ .packet_id = rel.packet_id };
+
+    try sess.sendMsg(ack);
+}
+
 fn handlePublish(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void {
     const sess = self.sessions.get(conn.clientId()) orelse return error.SessionNotFound;
 
@@ -134,6 +152,13 @@ fn handlePublish(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void 
         const ack: PubAck = .{ .packet_id = p.packet_id.? };
 
         try sess.sendMsg(ack);
+    }
+
+    if (p.qos == .exactly_once) {
+        const ack: PubRec = .{ .packet_id = p.packet_id.? };
+
+        try sess.sendMsg(ack);
+        try sess.appendInboundPubRelWaitlist(ack.packet_id);
     }
 }
 

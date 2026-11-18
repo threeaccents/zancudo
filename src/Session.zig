@@ -24,6 +24,8 @@ inflight_msgs: std.array_hash_map.Auto(u16, Publish) = .empty,
 // msgs queued up while the client was offline
 queued_msgs: Deque(Publish) = .empty,
 
+inbound_pub_rel_waitlist: std.ArrayList(u16) = .empty,
+
 next_packet_id: u16 = 1,
 
 clean_session: bool = true,
@@ -63,6 +65,7 @@ pub fn deinit(self: *Session) void {
     }
 
     self.inflight_msgs.deinit(self.alloc);
+    self.inbound_pub_rel_waitlist.deinit(self.alloc);
 
     while (self.queued_msgs.popFront()) |msg| {
         self.alloc.free(msg.topic);
@@ -185,6 +188,19 @@ pub fn removeInflightMsg(self: *Session, packet_id: u16) void {
     if (self.inflight_msgs.fetchOrderedRemove(packet_id)) |msg| {
         self.alloc.free(msg.value.payload);
         self.alloc.free(msg.value.topic);
+    }
+}
+
+pub fn appendInboundPubRelWaitlist(self: *Session, packet_id: u16) !void {
+    return self.inbound_pub_rel_waitlist.append(self.alloc, packet_id);
+}
+
+pub fn removeInboundPubRelWaitlist(self: *Session, packet_id: u16) void {
+    for (self.inbound_pub_rel_waitlist.items, 0..) |item, i| {
+        if (item == packet_id) {
+            _ = self.inbound_pub_rel_waitlist.swapRemove(i);
+            return;
+        }
     }
 }
 

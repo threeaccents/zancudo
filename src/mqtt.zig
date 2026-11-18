@@ -19,6 +19,9 @@ pub const SubAck = packet.SubAck;
 pub const Subscribe = packet.Subscribe;
 pub const Unsubscribe = packet.Unsubscribe;
 pub const UnsubAck = packet.UnsubAck;
+pub const PubRec = packet.PubRec;
+pub const PubComp = packet.PubComp;
+pub const PubRel = packet.PubRel;
 
 test {
     @import("std").testing.refAllDecls(@This());
