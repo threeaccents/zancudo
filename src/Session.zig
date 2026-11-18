@@ -170,6 +170,13 @@ pub fn appendInflightMsg(self: *Session, msg: Publish) !void {
     try self.inflight_msgs.put(self.alloc, owned.packet_id.?, owned);
 }
 
+pub fn removeInflightMsg(self: *Session, packet_id: u16) void {
+    if (self.inflight_msgs.fetchOrderedRemove(packet_id)) |msg| {
+        self.alloc.free(msg.value.payload);
+        self.alloc.free(msg.value.topic);
+    }
+}
+
 test "sendPublish offline client gets put in the queue" {
     const allocator = std.testing.allocator;
 

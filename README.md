@@ -44,7 +44,7 @@ MQTT 5.
 ### QoS 1
 
 - [x] PUBACK to the publisher
-- [ ] Handle PUBACK from a subscriber and free its inflight slot
+- [x] Handle PUBACK from a subscriber and free its inflight slot
 - [ ] Move queued messages into inflight when a slot frees up
 
 ### QoS 2
