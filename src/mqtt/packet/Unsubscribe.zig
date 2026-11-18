@@ -3,6 +3,8 @@ const Unsubscribe = @This();
 const std = @import("std");
 const Reader = @import("../Reader.zig");
 
+pub const name = "UNSUBSCRIBE";
+
 packet_id: u16,
 filters: [][]const u8,
 

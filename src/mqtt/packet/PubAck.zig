@@ -4,6 +4,8 @@ const std = @import("std");
 const Writer = @import("../Writer.zig");
 const Reader = @import("../Reader.zig");
 
+pub const name = "PUBACK";
+
 packet_id: u16,
 
 pub fn decode(body: []const u8) !PubAck {

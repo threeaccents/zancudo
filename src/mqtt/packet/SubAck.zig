@@ -5,6 +5,8 @@ const SubAck = @This();
 const std = @import("std");
 const Writer = @import("../Writer.zig");
 
+pub const name = "SUBACK";
+
 packet_id: u16,
 filter_codes: []const ReturnCode,
 

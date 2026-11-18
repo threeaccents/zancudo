@@ -7,6 +7,8 @@ const Reader = @import("../Reader.zig");
 const QoS = @import("../packet.zig").QoS;
 const Writer = @import("../Writer.zig");
 
+pub const name = "PUBLISH";
+
 packet_id: ?u16 = null,
 qos: QoS,
 dup: bool,

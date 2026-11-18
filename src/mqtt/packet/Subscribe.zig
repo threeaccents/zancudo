@@ -5,6 +5,8 @@ const std = @import("std");
 const Reader = @import("../Reader.zig");
 const QoS = @import("../packet.zig").QoS;
 
+pub const name = "SUBSCRIBE";
+
 packet_id: u16,
 topics: []Topic,
 

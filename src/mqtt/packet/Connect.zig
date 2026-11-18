@@ -5,6 +5,8 @@ const std = @import("std");
 const QoS = @import("../packet.zig").QoS;
 const Reader = @import("../Reader.zig");
 
+pub const name = "CONNECT";
+
 protocol_name: []const u8,
 
 /// 4 for MQTT 3.1.1. Checked by the broker, since a wrong level still gets a

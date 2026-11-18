@@ -46,6 +46,7 @@ pub fn init(io: Io, alloc: Allocator) Broker {
 /// `body` points into the connection's input buffer and is only valid
 /// during this call.
 pub fn handlePacket(self: *Broker, conn: *Conn, header: FixedHeader, body: []const u8) !void {
+    log.debug("client {d}[{s}] received {s}", .{ conn.fd, conn.clientId(), @tagName(header.packet_type) });
     // connect has to be the first msg sent
     if (!conn.connected and header.packet_type != .connect) return error.ProtocolViolation;
 

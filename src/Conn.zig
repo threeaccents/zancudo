@@ -14,6 +14,8 @@ const Will = mqtt.Connect.Will;
 /// MQTT 3.1.1 only requires servers to accept client IDs up to 23 bytes.
 pub const max_client_id_len = 23;
 
+const log = std.log.scoped(.conn);
+
 fd: sys.fd_t,
 
 // epoll fd
@@ -89,6 +91,7 @@ pub fn consume(self: *Conn, packet_len: usize) void {
 }
 
 pub fn send(self: *Conn, packet: anytype) !void {
+    log.debug("client {d}[{s}] sent {s}", .{ self.fd, self.clientId(), @TypeOf(packet).name });
     var w = Writer.init(self.out_buf[self.out_len..]);
     try packet.encode(&w);
 

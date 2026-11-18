@@ -3,6 +3,8 @@ const ConnAck = @This();
 
 const Writer = @import("../Writer.zig");
 
+pub const name = "CONNACK";
+
 session_present: bool,
 
 return_code: ReturnCode,

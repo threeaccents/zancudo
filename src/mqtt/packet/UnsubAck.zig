@@ -3,6 +3,8 @@ const UnsubAck = @This();
 const std = @import("std");
 const Writer = @import("../Writer.zig");
 
+pub const name = "UNSUBACK";
+
 packet_id: u16,
 
 pub fn encode(self: UnsubAck, w: *Writer) !void {
