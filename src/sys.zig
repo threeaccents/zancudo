@@ -284,7 +284,7 @@ pub fn signalfdRead(fd: fd_t) SignalfdReadError!linux.SIG {
     var info: linux.signalfd_siginfo = undefined;
     const rc = linux.read(fd, std.mem.asBytes(&info), @sizeOf(linux.signalfd_siginfo));
     return switch (linux.errno(rc)) {
-        .SUCCESS => @enumFromInt(info.signo),
+        .SUCCESS => @fromBackingInt(info.signo),
         .AGAIN => error.WouldBlock,
         else => |err| unexpected(err),
     };
