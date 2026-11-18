@@ -71,3 +71,4 @@ If the motivations remains I want to implement MQTT 5 protocol and add kqeueue s
 - [ ] Persist sessions and queues across restarts (Fqueue)
 - [ ] Bitcask-inspired KV store for session msgs (inflight, waitlist etc)
 - [ ] auth
+- [ ] MacOs support
