@@ -62,19 +62,10 @@ MQTT 5.
 - [x] Resend unacked messages with DUP=1 on resume
 - [x] Keep a queued message when its send fails
 
-### Bugs and cleanup
-
-- [ ] `conns` key dangles after a takeover (Broker.appendConn)
-- [ ] Accept error paths don't undo earlier steps (Server.handleSocketEv)
-- [x] Draining the queue ignores the inflight limit and hits `unreachable` past 50 (Session.drainQueuedMsgs)
-- [ ] Broker.deinit frees sessions, conns and subscriptions
-- [ ] Shut down cleanly on SIGINT / SIGTERM
 
 ### Tests
 
-- [ ] Session tests use real topics and payloads, and valid packets
-- [ ] drainQueuedMsgs tests
-- [ ] End-to-end test against a real client (mosquitto_pub / mosquitto_sub)
+- [ ] Pass Paho 3.1.1 test suite
 
 ### Later
 
