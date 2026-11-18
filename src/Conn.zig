@@ -21,10 +21,10 @@ fd: sys.fd_t,
 epfd: sys.fd_t,
 
 /// Only the first in_len bytes are valid.
-in_buf: [16 * 1024]u8 = undefined,
+in_buf: [128 * 1024]u8 = undefined,
 in_len: usize = 0,
 
-out_buf: [16_000]u8 = undefined,
+out_buf: [128 * 1024]u8 = undefined,
 out_len: usize = 0,
 
 next_packet_id: u16 = 0,
