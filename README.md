@@ -23,7 +23,6 @@ If the motivations remains I want to implement MQTT 5 protocol and add kqeueue s
 - [x] Keep-alive: close a client silent for 1.5x its keep-alive
 - [x] Will message: store on CONNECT, publish on abnormal close, drop on DISCONNECT
 - [x] Reject a CONNECT whose will topic is empty or has wildcards
-- [ ] Packets larger than the 16KB input buffer
 
 ### Subscriptions
 
