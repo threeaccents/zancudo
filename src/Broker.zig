@@ -499,17 +499,22 @@ fn getOrSetSession(self: *Broker, conn: *Conn, clean_session: bool) !*Session {
 fn appendConn(self: *Broker, conn: *Conn) !void {
     // we might have an old conn still around for this client.
     // So we set the new conn and the old conn we close.
-    if (try self.conns.fetchPut(self.alloc, conn.clientId(), conn)) |old| {
-        old.value.closing = true;
-        sys.shutdown(old.value.fd);
+    const entry = try self.conns.getOrPut(self.alloc, conn.clientId());
+
+    if (entry.found_existing) {
+        entry.value_ptr.*.closing = true;
+        sys.shutdown(entry.value_ptr.*.fd);
     }
+
+    entry.key_ptr.* = conn.clientId();
+    entry.value_ptr.* = conn;
 }
 
 test "Broker: retained messages" {
     const testing = std.testing;
 
     var broker: Broker = .init(testing.io, testing.allocator);
-    defer broker.retained_msgs.deinit(testing.allocator);
+    defer broker.deinit();
 
     var p: Publish = .{ .qos = .at_least_once, .dup = false, .retain = true, .topic = "a/b", .payload = "one", .packet_id = 7 };
     try broker.publish(p);
@@ -555,8 +560,7 @@ test "Broker: retained messages go to new subscriptions" {
     const alloc = testing.allocator;
 
     var broker: Broker = .init(testing.io, alloc);
-    defer broker.retained_msgs.deinit(alloc);
-    defer for (broker.retained_msgs.values()) |msg| broker.freeRetained(msg);
+    defer broker.deinit();
 
     var sess: Session = .{ .conn = null, .alloc = alloc };
     defer sess.deinit();
