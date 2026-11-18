@@ -52,7 +52,7 @@ MQTT 5.
 ### QoS 2
 
 - [x] Inbound: PUBREC, PUBREL, PUBCOMP, no duplicate delivery
-- [ ] Outbound: PUBREC, PUBREL, PUBCOMP
+- [x] Outbound: PUBREC, PUBREL, PUBCOMP
 
 ### Sessions
 

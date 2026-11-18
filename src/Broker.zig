@@ -64,6 +64,8 @@ pub fn handlePacket(self: *Broker, conn: *Conn, header: FixedHeader, body: []con
         .publish => try self.handlePublish(conn, header.flags, body),
         .puback => try self.handlePubAck(conn, header.flags, body),
         .pubrel => try self.handlePubRel(conn, header.flags, body),
+        .pubrec => try self.handlePubRec(conn, header.flags, body),
+        .pubcomp => try self.handlePubComp(conn, header.flags, body),
         else => {
             return error.PacketTypeNotImplementedYet;
         },
@@ -111,6 +113,7 @@ fn handleConnect(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void 
 
     try sess.sendMsg(ack);
 
+    try sess.resendPubRel();
     try sess.resendInflightMsgs();
     try sess.drainQueuedMsgs();
 }
@@ -139,6 +142,38 @@ fn handlePubRel(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void {
     const ack: PubComp = .{ .packet_id = rel.packet_id };
 
     try sess.sendMsg(ack);
+}
+
+fn handlePubRec(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void {
+    if (flags != 0b0000) return error.Malformed;
+
+    const sess = self.sessions.get(conn.clientId()) orelse return error.SessionNotFound;
+
+    const rec = PubRec.decode(body) catch return error.Malformed;
+
+    const is_qos2 = if (sess.inflight_msgs.get(rec.packet_id)) |msg| msg.qos == .exactly_once else false;
+
+    if (is_qos2) {
+        try sess.appendOutboundPubCompWaitlist(rec.packet_id);
+
+        sess.removeInflightMsg(rec.packet_id);
+    }
+
+    const ack: PubRel = .{ .packet_id = rec.packet_id };
+
+    try sess.sendMsg(ack);
+}
+
+fn handlePubComp(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void {
+    if (flags != 0b0000) return error.Malformed;
+
+    const sess = self.sessions.get(conn.clientId()) orelse return error.SessionNotFound;
+
+    const comp = PubComp.decode(body) catch return error.Malformed;
+
+    sess.removeOutboundPubCompWaitlist(comp.packet_id);
+
+    try sess.drainQueuedMsgs();
 }
 
 fn handlePublish(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void {

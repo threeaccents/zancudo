@@ -7,6 +7,7 @@ const sys = @import("sys.zig");
 const linux = std.os.linux;
 const mqtt = @import("mqtt.zig");
 const Publish = mqtt.Publish;
+const PubRel = mqtt.PubRel;
 const Deque = std.Deque;
 
 const log = std.log.scoped(.session);
@@ -25,6 +26,7 @@ inflight_msgs: std.array_hash_map.Auto(u16, Publish) = .empty,
 queued_msgs: Deque(Publish) = .empty,
 
 inbound_pub_rel_waitlist: std.ArrayList(u16) = .empty,
+outbound_pub_comp_waitlist: std.ArrayList(u16) = .empty,
 
 next_packet_id: u16 = 1,
 
@@ -66,6 +68,7 @@ pub fn deinit(self: *Session) void {
 
     self.inflight_msgs.deinit(self.alloc);
     self.inbound_pub_rel_waitlist.deinit(self.alloc);
+    self.outbound_pub_comp_waitlist.deinit(self.alloc);
 
     while (self.queued_msgs.popFront()) |msg| {
         self.alloc.free(msg.topic);
@@ -156,6 +159,14 @@ pub fn drainQueuedMsgs(self: *Session) !void {
     }
 }
 
+pub fn resendPubRel(self: *Session) !void {
+    for (self.outbound_pub_comp_waitlist.items) |packet_id| {
+        const rel: PubRel = .{ .packet_id = packet_id };
+
+        try self.sendMsg(rel);
+    }
+}
+
 pub fn resendInflightMsgs(self: *Session) !void {
     for (self.inflight_msgs.values()) |msg| {
         var resend = msg;
@@ -188,6 +199,19 @@ pub fn removeInflightMsg(self: *Session, packet_id: u16) void {
     if (self.inflight_msgs.fetchOrderedRemove(packet_id)) |msg| {
         self.alloc.free(msg.value.payload);
         self.alloc.free(msg.value.topic);
+    }
+}
+
+pub fn appendOutboundPubCompWaitlist(self: *Session, packet_id: u16) !void {
+    return self.outbound_pub_comp_waitlist.append(self.alloc, packet_id);
+}
+
+pub fn removeOutboundPubCompWaitlist(self: *Session, packet_id: u16) void {
+    for (self.outbound_pub_comp_waitlist.items, 0..) |item, i| {
+        if (item == packet_id) {
+            _ = self.outbound_pub_comp_waitlist.orderedRemove(i);
+            return;
+        }
     }
 }
 
