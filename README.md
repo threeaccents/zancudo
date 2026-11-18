@@ -37,8 +37,8 @@ MQTT 5.
 - [x] Reject wildcards in PUBLISH topic names
 - [x] Deliver at min(publish QoS, subscription QoS)
 - [ ] Clear DUP and RETAIN on messages forwarded to subscribers
-- [ ] Retained messages: keep the last one per topic, empty payload clears it
-- [ ] A will with Will Retain set becomes its topic's retained message
+- [x] Retained messages: keep the last one per topic, empty payload clears it
+- [x] A will with Will Retain set becomes its topic's retained message
 - [ ] Send retained messages on SUBSCRIBE
 
 ### QoS 1

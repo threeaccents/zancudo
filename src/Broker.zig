@@ -35,6 +35,8 @@ conns: std.StringHashMapUnmanaged(*Conn) = .empty,
 
 sessions: std.StringHashMapUnmanaged(*Session) = .empty,
 
+retained_msgs: std.array_hash_map.String(*Publish) = .empty,
+
 io: Io,
 
 pub fn init(io: Io, alloc: Allocator) Broker {
@@ -133,6 +135,8 @@ fn handlePublish(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void 
 }
 
 fn publish(self: *Broker, p: Publish) !void {
+    if (p.retain) try self.storeRetained(p);
+
     var buf: [16 * 1024]TopicTrie.Subscriber = undefined;
     const subscribers = try self.subscriptions.match(p.topic, &buf);
 
@@ -154,6 +158,42 @@ fn publish(self: *Broker, p: Publish) !void {
             log.err("Failed to send client publish msg. topic {s} client id {s}. Error: {t}", .{ pub_packet.topic, s.client_id, err });
         };
     }
+}
+
+fn storeRetained(self: *Broker, p: Publish) !void {
+    if (p.payload.len == 0) {
+        if (self.retained_msgs.fetchSwapRemove(p.topic)) |kv| self.freeRetained(kv.value);
+        return;
+    }
+
+    const topic = try self.alloc.dupe(u8, p.topic);
+    errdefer self.alloc.free(topic);
+
+    const payload = try self.alloc.dupe(u8, p.payload);
+    errdefer self.alloc.free(payload);
+
+    const msg = try self.alloc.create(Publish);
+    errdefer self.alloc.destroy(msg);
+
+    msg.* = .{
+        .dup = false,
+        .payload = payload,
+        .qos = p.qos,
+        .retain = true,
+        .topic = topic,
+    };
+
+    const entry = try self.retained_msgs.getOrPut(self.alloc, topic);
+    if (entry.found_existing) self.freeRetained(entry.value_ptr.*);
+
+    entry.key_ptr.* = topic;
+    entry.value_ptr.* = msg;
+}
+
+fn freeRetained(self: *Broker, msg: *Publish) void {
+    self.alloc.free(msg.topic);
+    self.alloc.free(msg.payload);
+    self.alloc.destroy(msg);
 }
 
 fn getMsgQos(p: QoS, s: QoS) QoS {
@@ -349,4 +389,26 @@ fn appendConn(self: *Broker, conn: *Conn) !void {
         old.value.closing = true;
         sys.shutdown(old.value.fd);
     }
+}
+
+test "Broker: retained messages" {
+    const testing = std.testing;
+
+    var broker: Broker = .init(testing.io, testing.allocator);
+    defer broker.retained_msgs.deinit(testing.allocator);
+
+    var p: Publish = .{ .qos = .at_least_once, .dup = false, .retain = true, .topic = "a/b", .payload = "one", .packet_id = 7 };
+    try broker.publish(p);
+
+    p.payload = "two";
+    try broker.publish(p);
+
+    const kept = broker.retained_msgs.get("a/b").?;
+    try testing.expectEqual(1, broker.retained_msgs.count());
+    try testing.expectEqualStrings("two", kept.payload);
+    try testing.expectEqual(null, kept.packet_id);
+
+    p.payload = "";
+    try broker.publish(p);
+    try testing.expectEqual(0, broker.retained_msgs.count());
 }

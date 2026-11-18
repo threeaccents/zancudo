@@ -18,6 +18,7 @@ pub fn main(init: std.process.Init) !void {
 
 // Tests only run for files reachable from here.
 test {
+    _ = @import("Broker.zig");
     _ = @import("mqtt.zig");
     _ = @import("Session.zig");
     _ = @import("sys.zig");
