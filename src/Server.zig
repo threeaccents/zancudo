@@ -114,6 +114,10 @@ fn handleSocketEv(self: *Server) void {
         };
         log.info("client fd = {d}, from {f}", .{ accepted.fd, accepted.addr });
 
+        sys.setsockopt(accepted.fd, linux.IPPROTO.TCP, linux.TCP.NODELAY, 1) catch |err| {
+            log.err("failed to set TCP_NODELAY on fd {d}: {t}", .{ accepted.fd, err });
+        };
+
         const conn = self.alloc.create(Conn) catch |err| {
             log.err("failed to allocate conn state: {t}", .{err});
             sys.close(accepted.fd);
