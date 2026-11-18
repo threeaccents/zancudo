@@ -149,7 +149,7 @@ fn publish(self: *Broker, p: Publish) !void {
             .dup = false,
             .payload = p.payload,
             .qos = qos,
-            .retain = p.retain,
+            .retain = false,
             .topic = p.topic,
             .packet_id = if (qos != .at_most_once) sess.packetId() else null,
         };
@@ -411,4 +411,27 @@ test "Broker: retained messages" {
     p.payload = "";
     try broker.publish(p);
     try testing.expectEqual(0, broker.retained_msgs.count());
+}
+
+test "Broker: forwarded messages clear DUP and RETAIN" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+
+    var broker: Broker = .init(testing.io, alloc);
+    defer broker.subscriptions.deinit(alloc);
+    defer broker.sessions.deinit(alloc);
+    defer broker.retained_msgs.deinit(alloc);
+    defer for (broker.retained_msgs.values()) |msg| broker.freeRetained(msg);
+
+    var sess: Session = .{ .conn = null, .alloc = alloc };
+    defer sess.deinit();
+
+    try broker.sessions.put(alloc, "c1", &sess);
+    try broker.subscriptions.subscribe(alloc, "a/b", "c1", .at_least_once);
+
+    try broker.publish(.{ .qos = .at_least_once, .dup = true, .retain = true, .topic = "a/b", .payload = "hi", .packet_id = 7 });
+
+    const fwd = sess.queued_msgs.front().?;
+    try testing.expect(!fwd.dup);
+    try testing.expect(!fwd.retain);
 }
