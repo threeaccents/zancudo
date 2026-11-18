@@ -19,8 +19,7 @@ conn: ?*Conn,
 alloc: Allocator,
 
 // QoS 1&2 msgs waiting for responses
-inflight_msgs: [max_inflight_msgs]Publish = undefined,
-inflight_msgs_len: u8 = 0,
+inflight_msgs: std.array_hash_map.Auto(u16, Publish) = .empty,
 
 // msgs queued up while the client was offline
 queued_msgs: Deque(Publish) = .empty,
@@ -58,12 +57,12 @@ pub fn init(alloc: Allocator, conn: *Conn, clean_session: bool) Session {
 }
 
 pub fn deinit(self: *Session) void {
-    for (self.inflight_msgs[0..self.inflight_msgs_len]) |msg| {
+    for (self.inflight_msgs.values()) |msg| {
         self.alloc.free(msg.topic);
         self.alloc.free(msg.payload);
     }
 
-    self.inflight_msgs = undefined;
+    self.inflight_msgs.deinit(self.alloc);
 
     while (self.queued_msgs.popFront()) |msg| {
         self.alloc.free(msg.topic);
@@ -91,7 +90,7 @@ fn sendPublish(self: *Session, msg: Publish) !void {
     var conn = self.conn.?;
 
     if (msg.qos == .at_least_once or msg.qos == .exactly_once) {
-        if (self.inflight_msgs_len >= max_inflight_msgs) {
+        if (self.inflight_msgs.count() >= max_inflight_msgs) {
             // inflight buffer full so just queue the msg
             return self.appendQueuedMsg(msg);
         }
@@ -145,7 +144,7 @@ pub fn drainQueuedMsgs(self: *Session) !void {
 
 pub fn appendInflightMsg(self: *Session, msg: Publish) !void {
     // if inflight is full we queue the msg
-    if (self.inflight_msgs_len >= self.inflight_msgs.len) unreachable;
+    if (self.inflight_msgs.count() >= max_inflight_msgs) unreachable;
 
     var owned = msg;
 
@@ -155,9 +154,7 @@ pub fn appendInflightMsg(self: *Session, msg: Publish) !void {
     owned.topic = try self.alloc.dupe(u8, owned.topic);
     errdefer self.alloc.free(owned.topic);
 
-    self.inflight_msgs[self.inflight_msgs_len] = owned;
-
-    self.inflight_msgs_len += 1;
+    try self.inflight_msgs.put(self.alloc, owned.packet_id.?, owned);
 }
 
 test "sendPublish offline client gets put in the queue" {
@@ -256,6 +253,6 @@ test "sendPublish qos 1/2 gets added to the inflight queue" {
 
     try sess.sendPublish(msg);
 
-    try std.testing.expectEqual(1, sess.inflight_msgs_len);
-    try std.testing.expectEqual(msg.packet_id, sess.inflight_msgs[0].packet_id);
+    try std.testing.expectEqual(1, sess.inflight_msgs.count());
+    try std.testing.expectEqual(msg.packet_id, sess.inflight_msgs.values()[0].packet_id);
 }
