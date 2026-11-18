@@ -191,6 +191,13 @@ pub fn removeInflightMsg(self: *Session, packet_id: u16) void {
     }
 }
 
+pub fn inInboundPubRelWaitlist(self: *Session, packet_id: u16) bool {
+    for (self.inbound_pub_rel_waitlist.items) |item| {
+        if (item == packet_id) return true;
+    }
+    return false;
+}
+
 pub fn appendInboundPubRelWaitlist(self: *Session, packet_id: u16) !void {
     return self.inbound_pub_rel_waitlist.append(self.alloc, packet_id);
 }

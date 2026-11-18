@@ -146,19 +146,26 @@ fn handlePublish(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void 
 
     const p = Publish.decode(flags, body) catch return error.Malformed;
 
-    try self.publish(p);
+    switch (p.qos) {
+        .at_least_once => {
+            try self.publish(p);
 
-    if (p.qos == .at_least_once) {
-        const ack: PubAck = .{ .packet_id = p.packet_id.? };
+            const ack: PubAck = .{ .packet_id = p.packet_id.? };
 
-        try sess.sendMsg(ack);
-    }
+            try sess.sendMsg(ack);
+        },
+        .exactly_once => {
+            if (!sess.inInboundPubRelWaitlist(p.packet_id.?)) {
+                try self.publish(p);
 
-    if (p.qos == .exactly_once) {
-        const ack: PubRec = .{ .packet_id = p.packet_id.? };
+                try sess.appendInboundPubRelWaitlist(p.packet_id.?);
+            }
 
-        try sess.sendMsg(ack);
-        try sess.appendInboundPubRelWaitlist(ack.packet_id);
+            const ack: PubRec = .{ .packet_id = p.packet_id.? };
+
+            try sess.sendMsg(ack);
+        },
+        .at_most_once => try self.publish(p),
     }
 }
 
