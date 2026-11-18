@@ -1,5 +1,7 @@
 # Zancudo
 
+[![test](https://github.com/threeaccents/zancudo/actions/workflows/test.yml/badge.svg)](https://github.com/threeaccents/zancudo/actions/workflows/test.yml)
+
 An MQTT 3.1.1 broker written in Zig.
 
 I started this project mainly to learn Zig and to stay sane in the age of AI. All the code is written with my bare hands (I know what a psycho).
