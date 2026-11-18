@@ -124,7 +124,7 @@ fn publish(self: *Broker, p: Publish) !void {
         const qos = getMsgQos(p.qos, s.qos);
 
         const pub_packet: Publish = .{
-            .dup = p.dup,
+            .dup = false,
             .payload = p.payload,
             .qos = qos,
             .retain = p.retain,
