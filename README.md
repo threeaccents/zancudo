@@ -65,7 +65,7 @@ MQTT 5.
 
 ### Tests
 
-- [ ] Pass Paho 3.1.1 test suite
+- [x] Pass Paho 3.1.1 test suite
 
 ### Later
 
