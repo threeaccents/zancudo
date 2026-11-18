@@ -4,12 +4,12 @@
 
 An MQTT 3.1.1 broker written in Zig.
 
-I started this project mainly to learn Zig and to stay sane in the age of AI. All the code is written with my bare hands (I know what a psycho).
-I haven't been 100% AI free though. I used it to better understand the MQTT protocol and generate the roadmap you see in this readme.
+For now it only works on Linux.
 
-I'm using this broker for my farm. This is not meant to be a bullet proof mqtt broker more like a fun side project.
-Now that I've gotten decently far I do want to finish implementing the 3.1.1 protocol. Perhaps even start implementing 
-MQTT 5.
+I started this project mainly to learn Zig and to stay sane in the age of AI. 98% of the code is written with my bare hands.
+It currently passes Paho's client test suite and I'm using it to build a "smart farm". 
+
+If the motivations remains I want to implement MQTT protocol and add kqeueue support so I can run this on Mac.
 
 ## Roadmap
 
@@ -70,5 +70,5 @@ MQTT 5.
 ### Later
 
 - [ ] Persist sessions and queues across restarts (Fqueue)
-- [ ] Bitcask-inspired KV store for inflight messages
-- [ ] Username / password auth
+- [ ] Bitcask-inspired KV store for session msgs (inflight, waitlist etc)
+- [ ] auth
