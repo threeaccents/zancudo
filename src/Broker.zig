@@ -108,11 +108,17 @@ fn handleConnect(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void 
 }
 
 fn handlePublish(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void {
-    _ = conn;
+    const sess = self.sessions.get(conn.clientId()) orelse return error.SessionNotFound;
 
     const p = Publish.decode(flags, body) catch return error.Malformed;
 
     try self.publish(p);
+
+    if (p.qos == .at_least_once) {
+        const ack: PubAck = .{ .packet_id = p.packet_id.? };
+
+        try sess.sendMsg(ack);
+    }
 }
 
 fn publish(self: *Broker, p: Publish) !void {
