@@ -46,6 +46,23 @@ pub fn init(io: Io, alloc: Allocator) Broker {
     return .{ .io = io, .alloc = alloc };
 }
 
+pub fn deinit(self: *Broker) void {
+    var it = self.sessions.iterator();
+    while (it.next()) |entry| {
+        entry.value_ptr.*.deinit();
+        self.alloc.destroy(entry.value_ptr.*);
+        self.alloc.free(entry.key_ptr.*);
+    }
+    self.sessions.deinit(self.alloc);
+
+    self.subscriptions.deinit(self.alloc);
+
+    for (self.retained_msgs.values()) |msg| self.freeRetained(msg);
+    self.retained_msgs.deinit(self.alloc);
+
+    self.conns.deinit(self.alloc);
+}
+
 /// `body` points into the connection's input buffer and is only valid
 /// during this call.
 pub fn handlePacket(self: *Broker, conn: *Conn, header: FixedHeader, body: []const u8) !void {

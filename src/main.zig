@@ -9,6 +9,7 @@ pub fn main(init: std.process.Init) !void {
     const io = init.io;
 
     var broker: Broker = .init(io, alloc);
+    defer broker.deinit();
 
     var server: Server = try .init(io, alloc, &broker, .{ 127, 0, 0, 1 }, 42069);
     defer server.deinit();
