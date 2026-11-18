@@ -234,6 +234,33 @@ fn handleSubscribe(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !voi
     const ack: SubAck = .{ .packet_id = sub.packet_id, .filter_codes = filter_codes.items };
 
     try sess.sendMsg(ack);
+
+    for (sub.topics, filter_codes.items) |topic, code| {
+        if (code == .failure) continue;
+
+        self.sendRetained(sess, topic.filter, topic.qos);
+    }
+}
+
+fn sendRetained(self: *Broker, sess: *Session, filter: []const u8, granted: QoS) void {
+    for (self.retained_msgs.values()) |msg| {
+        if (!TopicTrie.matches(filter, msg.topic)) continue;
+
+        const qos = getMsgQos(msg.qos, granted);
+
+        const retained: Publish = .{
+            .dup = false,
+            .payload = msg.payload,
+            .qos = qos,
+            .retain = true,
+            .topic = msg.topic,
+            .packet_id = if (qos != .at_most_once) sess.packetId() else null,
+        };
+
+        sess.sendMsg(retained) catch |err| {
+            log.err("Failed to send retained msg. topic {s}. Error: {t}", .{ msg.topic, err });
+        };
+    }
 }
 
 fn handleUnsubscribe(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void {
@@ -434,4 +461,29 @@ test "Broker: forwarded messages clear DUP and RETAIN" {
     const fwd = sess.queued_msgs.front().?;
     try testing.expect(!fwd.dup);
     try testing.expect(!fwd.retain);
+}
+
+test "Broker: retained messages go to new subscriptions" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+
+    var broker: Broker = .init(testing.io, alloc);
+    defer broker.retained_msgs.deinit(alloc);
+    defer for (broker.retained_msgs.values()) |msg| broker.freeRetained(msg);
+
+    var sess: Session = .{ .conn = null, .alloc = alloc };
+    defer sess.deinit();
+
+    try broker.publish(.{ .qos = .at_least_once, .dup = false, .retain = true, .topic = "a/b", .payload = "ab", .packet_id = 1 });
+    try broker.publish(.{ .qos = .at_least_once, .dup = false, .retain = true, .topic = "x/y", .payload = "xy", .packet_id = 2 });
+    try broker.publish(.{ .qos = .at_least_once, .dup = false, .retain = true, .topic = "$SYS/up", .payload = "1", .packet_id = 3 });
+
+    // "#" skips the "$SYS" topic.
+    broker.sendRetained(&sess, "#", .at_most_once);
+    try testing.expectEqual(2, sess.queued_msgs.len);
+
+    const first = sess.queued_msgs.front().?;
+    try testing.expectEqualStrings("a/b", first.topic);
+    try testing.expect(first.retain);
+    try testing.expectEqual(.at_most_once, first.qos);
 }
