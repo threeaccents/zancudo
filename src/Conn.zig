@@ -11,8 +11,7 @@ const Writer = mqtt.Writer;
 const Timestamp = std.Io.Timestamp;
 const Will = mqtt.Connect.Will;
 
-/// MQTT 3.1.1 only requires servers to accept client IDs up to 23 bytes.
-pub const max_client_id_len = 23;
+pub const max_client_id_len = mqtt.Connect.max_client_id_len;
 
 const log = std.log.scoped(.conn);
 

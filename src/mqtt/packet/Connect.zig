@@ -7,6 +7,8 @@ const Reader = @import("../Reader.zig");
 
 pub const name = "CONNECT";
 
+pub const max_client_id_len = 128;
+
 protocol_name: []const u8,
 
 /// 4 for MQTT 3.1.1. Checked by the broker, since a wrong level still gets a
@@ -70,7 +72,7 @@ pub fn decode(flags: u4, body: []const u8) !Connect {
 
     const client_id = try r.readString();
 
-    if ((!clean_session and client_id.len == 0) or client_id.len > 23) return error.IdentifierRejected;
+    if ((!clean_session and client_id.len == 0) or client_id.len > max_client_id_len) return error.IdentifierRejected;
 
     var will: ?Will = null;
     if (will_flag) {
@@ -146,4 +148,15 @@ test "Connect: decode malformed" {
     try testing.expectError(error.Malformed, decode(0, "\x00\x04MQTT\x04\x06\x00\x3C\x00\x03abc\x00\x00\x00\x03bye"));
     try testing.expectError(error.Malformed, decode(0, "\x00\x04MQTT\x04\x06\x00\x3C\x00\x03abc\x00\x03a/#\x00\x03bye"));
     try testing.expectError(error.Malformed, decode(0, "\x00\x04MQTT\x04\x06\x00\x3C\x00\x03abc\x00\x03+/b\x00\x03bye"));
+}
+
+test "Connect: client ID up to 128 bytes" {
+    const testing = std.testing;
+    const header = "\x00\x04MQTT\x04\x02\x00\x3C";
+    const id: [129]u8 = @splat('a');
+
+    const longest = try decode(0, header ++ "\x00\x80" ++ id[0..128]);
+    try testing.expectEqual(128, longest.client_id.len);
+
+    try testing.expectError(error.IdentifierRejected, decode(0, header ++ "\x00\x81" ++ id));
 }
