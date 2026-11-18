@@ -132,8 +132,10 @@ pub fn drainQueuedMsgs(self: *Session) !void {
     if (self.conn == null) return error.ClientOffline;
 
     while (self.queued_msgs.popFront()) |msg| {
-        // check the err and maybe re-add msg to queue to try again
-        self.conn.?.send(msg) catch continue;
+        self.conn.?.send(msg) catch |err| {
+            log.err("failed to send msg [{s}] [{?d}]. error {t}", .{ msg.topic, msg.packet_id, err });
+            return self.queued_msgs.pushFront(self.alloc, msg);
+        };
 
         if (msg.qos != .at_most_once) try self.appendInflightMsg(msg);
 

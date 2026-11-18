@@ -58,7 +58,7 @@ MQTT 5.
 - [x] Session present flag in CONNACK
 - [x] Queue messages for offline clients
 - [x] Resend unacked messages with DUP=1 on resume
-- [ ] Keep a queued message when its send fails
+- [x] Keep a queued message when its send fails
 
 ### Bugs and cleanup
 
