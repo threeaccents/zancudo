@@ -18,6 +18,7 @@ fd: sys.fd_t,
 // epoll fd
 epfd: sys.fd_t,
 timerfd: sys.fd_t,
+signalfd: sys.fd_t,
 alloc: Allocator,
 ip: [4]u8,
 port: u16,
@@ -51,6 +52,9 @@ pub fn init(
     try sys.epollAdd(epfd, timerfd, linux.EPOLL.IN, .{ .ptr = 1 });
     try sys.timerfdSet(timerfd, std.time.ns_per_s, std.time.ns_per_s);
 
+    const signalfd = try sys.signalfdCreate(&.{ .INT, .TERM });
+    try sys.epollAdd(epfd, signalfd, linux.EPOLL.IN, .{ .ptr = 2 });
+
     log.info("listening on {f}", .{addr});
 
     return .{
@@ -62,6 +66,7 @@ pub fn init(
         .broker = broker,
         .alloc = alloc,
         .timerfd = timerfd,
+        .signalfd = signalfd,
     };
 }
 
@@ -69,6 +74,7 @@ pub fn deinit(self: *Server) void {
     sys.close(self.fd);
     sys.close(self.epfd);
     sys.close(self.timerfd);
+    sys.close(self.signalfd);
 
     var it = self.conns.valueIterator();
 
@@ -85,6 +91,12 @@ pub fn serve(self: *Server) !void {
         const ready_events = try sys.epollWait(self.epfd, &events, -1);
 
         for (ready_events) |ev| {
+            if (isSignalEv(ev)) {
+                const sig = try sys.signalfdRead(self.signalfd);
+                log.info("received {t}, shutting down", .{sig});
+                return;
+            }
+
             if (isSocketEv(ev)) self.handleSocketEv() else if (isKeepAliveTimerEv(ev)) try self.handleKeepAliveTimerEv() else try self.handleConnEv(ev);
         }
     }
@@ -231,4 +243,8 @@ fn isSocketEv(ev: EpollEvent) bool {
 
 fn isKeepAliveTimerEv(ev: EpollEvent) bool {
     return ev.data.ptr == 1;
+}
+
+fn isSignalEv(ev: EpollEvent) bool {
+    return ev.data.ptr == 2;
 }

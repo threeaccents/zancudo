@@ -254,6 +254,42 @@ fn toTimespec(ns: u64) linux.timespec {
     };
 }
 
+// ---- signalfd ----
+
+pub const SignalfdCreateError = error{ TooManyOpenFiles, Unexpected };
+
+/// Blocks `signals` so they no longer interrupt the process, and returns a
+/// non-blocking fd that becomes readable when one of them arrives.
+pub fn signalfdCreate(signals: []const linux.SIG) SignalfdCreateError!fd_t {
+    var mask = linux.sigemptyset();
+    for (signals) |sig| linux.sigaddset(&mask, sig);
+
+    switch (linux.errno(linux.sigprocmask(linux.SIG.BLOCK, &mask, null))) {
+        .SUCCESS => {},
+        else => |err| return unexpected(err),
+    }
+
+    const rc = linux.signalfd(-1, &mask, linux.SFD.NONBLOCK);
+    return switch (linux.errno(rc)) {
+        .SUCCESS => @intCast(rc),
+        .MFILE, .NFILE => error.TooManyOpenFiles,
+        else => |err| unexpected(err),
+    };
+}
+
+pub const SignalfdReadError = error{ WouldBlock, Unexpected };
+
+/// Returns the signal that arrived.
+pub fn signalfdRead(fd: fd_t) SignalfdReadError!linux.SIG {
+    var info: linux.signalfd_siginfo = undefined;
+    const rc = linux.read(fd, std.mem.asBytes(&info), @sizeOf(linux.signalfd_siginfo));
+    return switch (linux.errno(rc)) {
+        .SUCCESS => @enumFromInt(info.signo),
+        .AGAIN => error.WouldBlock,
+        else => |err| unexpected(err),
+    };
+}
+
 /// Closing an fd also removes it from epoll.
 pub fn close(fd: fd_t) void {
     // The fd is released even when close fails, so there's nothing to retry.
