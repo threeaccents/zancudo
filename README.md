@@ -57,7 +57,7 @@ MQTT 5.
 - [x] Clean and persistent sessions
 - [x] Session present flag in CONNACK
 - [x] Queue messages for offline clients
-- [ ] Resend unacked messages with DUP=1 on resume
+- [x] Resend unacked messages with DUP=1 on resume
 - [ ] Keep a queued message when its send fails
 - [ ] Draining the queue respects the inflight limit
 

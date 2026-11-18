@@ -142,6 +142,19 @@ pub fn drainQueuedMsgs(self: *Session) !void {
     }
 }
 
+pub fn resendInflightMsgs(self: *Session) !void {
+    for (self.inflight_msgs.values()) |msg| {
+        var resend = msg;
+
+        resend.dup = true;
+
+        self.conn.?.send(resend) catch |err| {
+            log.err("failed to resend inflight msg {d}. error {t}", .{ resend.packet_id.?, err });
+            return;
+        };
+    }
+}
+
 pub fn appendInflightMsg(self: *Session, msg: Publish) !void {
     // if inflight is full we queue the msg
     if (self.inflight_msgs.count() >= max_inflight_msgs) unreachable;

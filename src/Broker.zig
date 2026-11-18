@@ -103,6 +103,7 @@ fn handleConnect(self: *Broker, conn: *Conn, flags: u4, body: []const u8) !void 
 
     try sess.sendMsg(ack);
 
+    try sess.resendInflightMsgs();
     try sess.drainQueuedMsgs();
 }
 
