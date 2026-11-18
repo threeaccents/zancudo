@@ -125,6 +125,22 @@ fn matchNode(node: *const Node, levels: std.mem.SplitIterator(u8, .scalar), foun
     if (node.children.get(level)) |child| try matchNode(child, rest, found);
 }
 
+pub fn matches(filter: []const u8, topic: []const u8) bool {
+    if (std.mem.startsWith(u8, topic, "$") and (filter[0] == '+' or filter[0] == '#')) return false;
+
+    var filter_levels = std.mem.splitScalar(u8, filter, '/');
+    var topic_levels = std.mem.splitScalar(u8, topic, '/');
+
+    while (filter_levels.next()) |level| {
+        if (std.mem.eql(u8, level, "#")) return true;
+
+        const topic_level = topic_levels.next() orelse return false;
+        if (!std.mem.eql(u8, level, "+") and !std.mem.eql(u8, level, topic_level)) return false;
+    }
+
+    return topic_levels.next() == null;
+}
+
 pub fn removeSubscriber(self: *TopicTrie, alloc: Allocator, client_id: []const u8) void {
     rmSub(alloc, &self.root, client_id);
 }
@@ -219,6 +235,25 @@ test "TopicTrie: match" {
 
     var small: [1]Subscriber = undefined;
     try testing.expectError(error.OutOfMemory, trie.match("a/b", &small));
+}
+
+test "TopicTrie: matches" {
+    const testing = std.testing;
+
+    try testing.expect(matches("a/b", "a/b"));
+    try testing.expect(matches("a/+", "a/b"));
+    try testing.expect(matches("a/+", "a/"));
+    try testing.expect(matches("a/#", "a/b/c"));
+    try testing.expect(matches("a/#", "a"));
+    try testing.expect(matches("#", "a/b"));
+    try testing.expect(matches("$SYS/#", "$SYS/uptime"));
+
+    try testing.expect(!matches("a/b", "a/c"));
+    try testing.expect(!matches("a/+", "a/b/c"));
+    try testing.expect(!matches("a/+", "a"));
+    try testing.expect(!matches("a/b", "a/b/c"));
+    try testing.expect(!matches("#", "$SYS/uptime"));
+    try testing.expect(!matches("+/uptime", "$SYS/uptime"));
 }
 
 test "TopicTrie: removeSubscriber" {
