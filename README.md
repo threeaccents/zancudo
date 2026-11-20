@@ -4,10 +4,10 @@
 
 An MQTT 3.1.1 broker written in Zig.
 
-For now it only works on Linux.
+For now it only works on Linux, it's single threaded using epoll.
 
-I started this project mainly to learn Zig and to stay sane in the age of AI. 98% of the code is written with my bare hands.
-It currently passes Paho's client test suite and I'm using it to build a "smart farm". 
+I started this project because I miss programming. 98% of the code is written with my bare hands.
+It currently passes Paho's client test suite and I'm using it in "production" for my farm.
 
 If the motivations remains I want to implement MQTT 5 protocol and add kqeueue support so I can run this on Mac.
 
@@ -69,6 +69,6 @@ If the motivations remains I want to implement MQTT 5 protocol and add kqeueue s
 ### Later
 
 - [ ] Persist sessions and queues across restarts (Fqueue)
-- [ ] Bitcask-inspired KV store for session msgs (inflight, waitlist etc)
+- [ ] Create a Bitcaskish KV store (inflight, waitlist etc)
 - [ ] auth
 - [ ] MacOs support
